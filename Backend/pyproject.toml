@@ -1,7 +1,83 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "Add your description here"
+description = "ScrapLink - AI-Driven B2B Industrial Scrap Exchange Platform Backend"
 readme = "README.md"
-requires-python = ">=3.12"
-dependencies = []
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "sqlalchemy>=2.0.23",
+    "psycopg2-binary>=2.9.9",
+    "python-dotenv>=1.0.0",
+    "passlib[bcrypt]>=1.7.4",
+    "pyjwt>=2.8.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "email-validator>=2.0.0,<3.0.0",
+    "pgvector>=0.2.5",
+    "bcrypt>=3.2.0,<4.0.0",
+    "beautifulsoup4>=4.15.0",
+    "fastapi>=0.141.1",
+    "joblib>=1.6.0",
+    "lxml>=6.1.2",
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.2",
+    "pandas>=3.0.5",
+    "psycopg2-binary>=2.9.12",
+    "python-dotenv>=1.2.3",
+    "reportlab>=5.0.1",
+    "requests>=2.34.2",
+    "scikit-learn>=1.9.0",
+    "sqlalchemy>=2.0.52",
+    "uvicorn>=0.52.4",
+    "xgboost>=3.4.1",
+    "yfinance>=1.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+# ⭐ IMPORTANT: Tell hatchling where your code is
+[tool.hatch.build.targets.wheel]
+packages = ["app"]  # Your code is in app/ directory
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/app",
+    "/.env.example",
+    "/README.md",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py39', 'py310', 'py311', 'py312']
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
