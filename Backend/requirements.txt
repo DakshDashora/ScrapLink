@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+requests
+yfinance
+beautifulsoup4
+lxml
+pandas
+numpy
+sqlalchemy
+psycopg2-binary
+scikit-learn
+xgboost
+joblib
+matplotlib
+reportlab
+python-dotenv
