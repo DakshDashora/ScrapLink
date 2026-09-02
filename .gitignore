@@ -78,3 +78,7 @@ Backend/__pycache__/
 
 Frontend/
 node_modules/
+
+MCX/
+__pycache__
+data/

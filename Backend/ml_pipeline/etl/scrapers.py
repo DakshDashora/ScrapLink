@@ -110,6 +110,223 @@ def generate_full_historical_dataset(raw_dir):
 
     # 1. Pull Live Scraped & API Data
     live_scraped = scrape_live_scrapmonster()
+    # ---------------------------------------------------------------------
+    # MCX ingestion – optional
+    # Look for a MCX Excel or CSV file in the raw data directory. The naming
+    # convention is ``mcx_raw_<YYYYMMDD>.<ext>`` where <ext> is ``xlsx`` or
+    # ``csv``. If the file exists we parse it and extend the record list.
+    # This step is deliberately tolerant – if the file is missing or cannot
+    # be parsed we simply log a warning and continue with the other sources.
+    # ---------------------------------------------------------------------
+    mcx_records = []
+    try:
+        import glob
+        import pathlib
+        import pandas as pd
+        from .mcx_mapping import MCX_TO_SCRAPLINK
+
+        raw_path = pathlib.Path(raw_dir)
+        # Determine MCX source directory (subfolder "MCX" if present, otherwise fallback to raw_dir)
+        mcx_dir = raw_path / "MCX"
+        if not mcx_dir.is_dir():
+            mcx_dir = raw_path
+        # Collect any Excel or CSV files in the MCX directory
+        mcx_files = [p for p in glob.glob(str(mcx_dir / "*")) if pathlib.Path(p).suffix.lower() in {".xlsx", ".xls", ".csv"}]
+        if mcx_files:
+            for mcx_file in mcx_files:
+                logger.info(f"[MCX START] Loading MCX data from {mcx_file}")
+                if mcx_file.lower().endswith(('.xlsx', '.xls')):
+                    mcx_df = pd.read_excel(mcx_file)
+                else:
+                    mcx_df = pd.read_csv(mcx_file)
+                required_cols = ["Instrument", "Date", "Segment", "Commodity", "Traded Contract (Lots)", "Total Value (Lakhs)", "Avg Daily Turnover(Lakhs)", "Premium Value (Lakhs)"]
+                missing = [c for c in required_cols if c not in mcx_df.columns]
+                if missing:
+                    logger.warning(f"[MCX WARN] Missing columns {missing} – skipping this file")
+                    continue
+                def map_commodity(name: str) -> str:
+                    return MCX_TO_SCRAPLINK.get(name, None)
+                for _, row in mcx_df.iterrows():
+                    commodity_raw = row["Commodity"]
+                    commodity_norm = map_commodity(commodity_raw)
+                    if not commodity_norm:
+                        logger.warning(f"[MCX WARN] Unknown commodity '{commodity_raw}' – row skipped")
+                        continue
+                    try:
+                        date_val = pd.to_datetime(row["Date"]).strftime('%Y-%m-%d')
+                    except Exception as e:
+                        logger.warning(f"[MCX WARN] Invalid date '{row['Date']}' – row skipped: {e}")
+                        continue
+                    try:
+                        lots = int(row["Traded Contract (Lots)"])
+                        total_val = float(row["Total Value (Lakhs)"])
+                        avg_turnover = float(row["Avg Daily Turnover(Lakhs)"])
+                        premium = float(row["Premium Value (Lakhs)"])
+                    except Exception as e:
+                        logger.warning(f"[MCX WARN] Non-numeric value for commodity {commodity_raw}: {e}")
+                        continue
+                    mcx_records.append({
+                        "date": date_val,
+                        "commodity": commodity_norm,
+                        "category": row.get("Segment", "Metals"),
+                        "spot_price_inr_kg": None,
+                        "futures_15d_inr_kg": None,
+                        "trading_volume_mt": None,
+                        "source": "MCX",
+                        "mcx_instrument": row["Instrument"],
+                        "mcx_segment": row["Segment"],
+                        "mcx_lots_traded": lots,
+                        "mcx_total_value_lakhs": total_val,
+                        "mcx_avg_daily_turnover_lakhs": avg_turnover,
+                        "mcx_premium_lakhs": premium,
+                    })
+            logger.info(f"[MCX SUCCESS] Parsed {len(mcx_records)} MCX records from MCX files")
+        else:
+            logger.info("[MCX INFO] No MCX raw file found – skipping MCX source")
+        # Determine MCX source directory (subfolder "MCX" if present, otherwise use raw_dir)
+        mcx_dir = raw_path / "MCX"
+        if not mcx_dir.is_dir():
+            mcx_dir = raw_path
+        # Find MCX files with supported extensions (.xlsx, .xls, .csv)
+        mcx_files = [p for p in glob.glob(str(mcx_dir / "*")) if pathlib.Path(p).suffix.lower() in {".xlsx", ".xls", ".csv"}]
+        if mcx_files:
+            mcx_file = mcx_files[0]  # use the first matching file
+            logger.info(f"[MCX START] Loading MCX data from {mcx_file}")
+            if mcx_file.lower().endswith(('.xlsx', '.xls')):
+                mcx_df = pd.read_excel(mcx_file)
+            else:
+                mcx_df = pd.read_csv(mcx_file)
+        else:
+            logger.info("[MCX INFO] No MCX raw file found – skipping MCX source")
+            mcx_df = pd.DataFrame()  # empty dataframe to avoid downstream errors
+        # Determine MCX source directory (subfolder "MCX" if present, otherwise use raw_dir)
+        mcx_dir = raw_path / "MCX"
+        if not mcx_dir.is_dir():
+            mcx_dir = raw_path
+        # Find MCX files with supported extensions (.xlsx, .xls, .csv)
+        mcx_files = [p for p in glob.glob(str(mcx_dir / "*")) if pathlib.Path(p).suffix.lower() in {".xlsx", ".xls", ".csv"}]
+        # Determine MCX source directory (subfolder "MCX" if present, otherwise use raw_dir)
+        mcx_dir = raw_path / "MCX"
+        if not mcx_dir.is_dir():
+            mcx_dir = raw_path
+        # Find MCX files with supported extensions (.xlsx, .xls, .csv)
+        mcx_files = [p for p in glob.glob(str(mcx_dir / "*")) if pathlib.Path(p).suffix.lower() in {".xlsx", ".xls", ".csv"}]
+        # If no files are found, the pipeline will log an info message later.
+        # Determine MCX source directory (subfolder "MCX" if present, otherwise use raw_dir)
+        mcx_dir = raw_path / "MCX"
+        if not mcx_dir.is_dir():
+            mcx_dir = raw_path
+        # Find MCX files with supported extensions (.xlsx, .xls, .csv)
+        mcx_files = [p for p in glob.glob(str(mcx_dir / "*")) if pathlib.Path(p).suffix.lower() in {".xlsx", ".xls", ".csv"}]
+        # If no files are found, the pipeline will log an info message later.
+
+        # Determine MCX source directory (subfolder "MCX" if present, else raw_dir)
+        mcx_dir = raw_path / "MCX"
+        if not mcx_dir.is_dir():
+            mcx_dir = raw_path
+        # Find MCX files matching naming convention (xlsx, xls, csv)
+        mcx_files = []
+        for pattern in ["mcx_raw_*.xlsx", "mcx_raw_*.xls", "mcx_raw_*.csv"]:
+            mcx_files.extend(glob.glob(str(mcx_dir / pattern)))
+        # Determine MCX source directory (subfolder "MCX" if present, else raw_dir)
+        mcx_dir = raw_path / "MCX"
+        if not mcx_dir.is_dir():
+            mcx_dir = raw_path
+        # Find MCX files matching naming convention (xlsx, xls, csv)
+        mcx_files = []
+        for pattern in ["mcx_raw_*.xlsx", "mcx_raw_*.xls", "mcx_raw_*.csv"]:
+            mcx_dir = raw_path  # fallback to raw_dir
+        # Find any Excel or CSV file in the MCX directory (accept .xlsx, .xls, .csv)
+        allowed_ext = {".xlsx", ".xls", ".csv"}
+        mcx_candidates = [
+            p for p in glob.glob(str(mcx_dir / "*"))
+            if pathlib.Path(p).suffix.lower() in allowed_ext
+        ]
+        mcx_files = mcx_candidates
+        # Prefer MCX subdirectory if it exists; otherwise use the raw directory directly
+        mcx_dir = raw_path / "MCX"
+        if not mcx_dir.is_dir():
+            mcx_dir = raw_path  # fallback to raw_dir
+        mcx_pattern_xlsx = str(mcx_dir / "mcx_raw_*.xlsx")
+        mcx_pattern_csv = str(mcx_dir / "mcx_raw_*.csv")
+        mcx_files = glob.glob(mcx_pattern_xlsx) + glob.glob(mcx_pattern_csv)
+        # Cleaned duplicate pattern definitions – using MCX subdirectory logic above
+        if mcx_files:
+            mcx_file = mcx_files[0]  # use the first matching file
+            logger.info(f"[MCX START] Loading MCX data from {mcx_file}")
+            if mcx_file.lower().endswith('.xlsx'):
+                mcx_df = pd.read_excel(mcx_file)
+            else:
+                mcx_df = pd.read_csv(mcx_file)
+
+            required_cols = [
+                "Instrument",
+                "Date",
+                "Segment",
+                "Commodity",
+                "Traded Contract (Lots)",
+                "Total Value (Lakhs)",
+                "Avg Daily Turnover(Lakhs)",
+                "Premium Value (Lakhs)"
+            ]
+            missing = [c for c in required_cols if c not in mcx_df.columns]
+            if missing:
+                logger.warning(f"[MCX WARN] Missing columns {missing} – skipping MCX ingestion")
+            else:
+                # Initialize a set to collect commodities that are not in the mapping
+                unknown_commodities: set[str] = set()
+
+                def map_commodity(name: str) -> str:
+                    # Return the mapped name or fallback to a normalized raw name (lower‑cased, spaces → underscores)
+                    return MCX_TO_SCRAPLINK.get(name) or name.lower().replace(" ", "_")
+
+                for _, row in mcx_df.iterrows():
+                    commodity_raw = row["Commodity"]
+                    commodity_norm = map_commodity(commodity_raw)
+
+                    if commodity_raw not in MCX_TO_SCRAPLINK:
+                        unknown_commodities.add(commodity_raw)
+                        logger.warning(
+                            f"[MCX WARN] Unknown commodity '{commodity_raw}' – using fallback name '{commodity_norm}'"
+                        )
+                    try:
+                        date_val = pd.to_datetime(row["Date"]).strftime('%Y-%m-%d')
+                    except Exception as e:
+                        logger.warning(f"[MCX WARN] Invalid date '{row['Date']}' – row skipped: {e}")
+                        continue
+                    try:
+                        lots = int(row["Traded Contract (Lots)"])
+                        total_val = float(row["Total Value (Lakhs)"])
+                        avg_turnover = float(row["Avg Daily Turnover(Lakhs)"])
+                        premium = float(row["Premium Value (Lakhs)"])
+                    except Exception as e:
+                        logger.warning(f"[MCX WARN] Non‑numeric value for commodity {commodity_raw}: {e}")
+                        continue
+                    mcx_records.append({
+                        "date": date_val,
+                        "commodity": commodity_norm,
+                        "category": row.get("Segment", "Metals"),
+                        "spot_price_inr_kg": None,
+                        "futures_15d_inr_kg": None,
+                        "trading_volume_mt": None,
+                        "source": "MCX",
+                        "mcx_instrument": row["Instrument"],
+                        "mcx_segment": row["Segment"],
+                        "mcx_lots_traded": lots,
+                        "mcx_total_value_lakhs": total_val,
+                        "mcx_avg_daily_turnover_lakhs": avg_turnover,
+                        "mcx_premium_lakhs": premium,
+                    })
+                logger.info(f"[MCX SUCCESS] Parsed {len(mcx_records)} MCX records from {mcx_file}")
+        else:
+            logger.info("[MCX INFO] No MCX raw file found – skipping MCX source")
+    except Exception as e:
+        logger.error(f"[MCX ERROR] Unexpected error while processing MCX file: {e}", exc_info=True)
+    # ---------------------------------------------------------------------
+    # Append MCX records to the master list
+    # ---------------------------------------------------------------------
+    if mcx_records:
+        all_records.extend(mcx_records)
     live_api = fetch_live_yahoo_finance()
 
     all_records = []
