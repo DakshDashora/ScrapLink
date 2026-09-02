@@ -28,24 +28,28 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Handle 401 unauthorized errors
     if (error.response?.status === 401) {
       localStorage.removeItem('access_token');
       localStorage.removeItem('user');
-      // Redirect to login if needed
-      // window.location.href = '/login';
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }
 );
 
-// API service methods
+// API service methods matching the Users table
 export const authService = {
   register: (userData) => api.post('/auth/register', userData),
   login: (credentials) => api.post('/auth/login', credentials),
   logout: () => api.post('/auth/logout'),
   getCurrentUser: () => api.get('/auth/me'),
-  refreshToken: () => api.post('/auth/refresh-token'),
+  verifyEmail: (token) => api.post('/auth/verify-email', { token }),
+  verifyPhone: (code) => api.post('/auth/verify-phone', { code }),
+  requestPhoneVerification: () => api.post('/auth/request-phone-verification'),
+  resendVerificationEmail: () => api.post('/auth/resend-verification'),
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  resetPassword: (token, newPassword) => api.post('/auth/reset-password', { token, newPassword }),
+  updateProfile: (userData) => api.put('/auth/profile', userData),
 };
 
 export default api;

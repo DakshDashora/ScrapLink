@@ -1,32 +1,36 @@
-// src/components/Auth/Register.jsx
+// src/components/Auth/Register.jsx (Updated)
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import {
   registerUser,
   clearErrors,
   clearSuccessFlags,
   selectAuth,
 } from '../../redux/slices/authSlices';
+import Verification from './Verification';
 import './Auth.css';
 
 const Register = ({ onSwitchToLogin }) => {
   const dispatch = useDispatch();
-  const { isLoading, error, registerSuccess } = useSelector(selectAuth);
+  const navigate = useNavigate();
+  const { isLoading, error, registerSuccess, user } = useSelector(selectAuth);
 
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
     password: '',
     role: 'Seller',
-    gstin: '',
+    phone: '',
   });
 
   const [passwordStrength, setPasswordStrength] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [touchedFields, setTouchedFields] = useState({});
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [showVerification, setShowVerification] = useState(false);
 
   useEffect(() => {
-    // Clear errors when component mounts
     dispatch(clearErrors());
     
     return () => {
@@ -36,16 +40,11 @@ const Register = ({ onSwitchToLogin }) => {
   }, [dispatch]);
 
   useEffect(() => {
-    if (registerSuccess) {
-      // Show success message and redirect after 3 seconds
-      const timer = setTimeout(() => {
-        dispatch(clearSuccessFlags());
-        onSwitchToLogin();
-      }, 3000);
-      
-      return () => clearTimeout(timer);
+    // If registration is successful and user is created, show verification
+    if (registerSuccess && user) {
+      setShowVerification(true);
     }
-  }, [registerSuccess, onSwitchToLogin, dispatch]);
+  }, [registerSuccess, user]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -54,7 +53,6 @@ const Register = ({ onSwitchToLogin }) => {
       [name]: value,
     }));
 
-    // Check password strength
     if (name === 'password') {
       checkPasswordStrength(value);
     }
@@ -90,45 +88,59 @@ const Register = ({ onSwitchToLogin }) => {
     }
   };
 
-  const validateGSTIN = (gstin) => {
-    if (!gstin) return true;
-    const gstinPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
-    return gstinPattern.test(gstin);
+  const validatePhone = (phone) => {
+    if (!phone) return true;
+    const phonePattern = /^[0-9]{10}$/;
+    return phonePattern.test(phone);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     dispatch(clearErrors());
 
-    // Validate GSTIN
-    if (formData.gstin && !validateGSTIN(formData.gstin)) {
-      // You can set a specific error state here
+    // Validate required fields
+    if (!formData.full_name || !formData.email || !formData.password) {
+      return;
+    }
+
+    // Validate phone if provided
+    if (formData.phone && !validatePhone(formData.phone)) {
+      return;
+    }
+
+    // Validate terms
+    if (!acceptTerms) {
+      // Set error for terms
       return;
     }
 
     const result = await dispatch(registerUser(formData));
     if (registerUser.fulfilled.match(result)) {
-      // Success handling is done in useEffect
+      // Verification will show automatically via useEffect
     }
   };
 
+  const handleVerificationComplete = () => {
+    // Navigate to dashboard after verification
+    navigate('/dashboard');
+  };
+
+  // Show verification component after successful registration
+  if (showVerification) {
+    return <Verification onComplete={handleVerificationComplete} />;
+  }
+
+  // Show registration form
   return (
     <div className="auth-container">
       <div className="auth-card">
         <h2 className="auth-title">Create Account</h2>
-        <p className="auth-subtitle">Register as a seller</p>
+        <p className="auth-subtitle">Join as a {formData.role}</p>
 
         {error && (
           <div className="auth-error">
             <span className="error-icon">⚠</span>
             {error}
-          </div>
-        )}
-        
-        {registerSuccess && (
-          <div className="auth-success">
-            <span className="success-icon">✓</span>
-            Registration successful! Redirecting to login...
           </div>
         )}
 
@@ -172,6 +184,7 @@ const Register = ({ onSwitchToLogin }) => {
             {touchedFields.email && !formData.email && (
               <span className="field-error">Email is required</span>
             )}
+            <small className="form-hint">We'll send a verification link to this email</small>
           </div>
 
           <div className="form-group">
@@ -220,26 +233,42 @@ const Register = ({ onSwitchToLogin }) => {
             >
               <option value="Seller">Seller</option>
               <option value="Buyer">Buyer</option>
-              <option value="Admin">Admin</option>
             </select>
+            <small className="form-hint">Select your primary role on the platform</small>
           </div>
 
           <div className="form-group">
-            <label htmlFor="gstin">GSTIN</label>
+            <label htmlFor="phone">Phone Number</label>
             <input
-              type="text"
-              id="gstin"
-              name="gstin"
-              value={formData.gstin}
+              type="tel"
+              id="phone"
+              name="phone"
+              value={formData.phone}
               onChange={handleChange}
-              onBlur={() => handleBlur('gstin')}
-              placeholder="Enter GSTIN (e.g., 08AAAAA0000A1Z5)"
-              maxLength="15"
-              className={touchedFields.gstin && formData.gstin && !validateGSTIN(formData.gstin) ? 'error' : ''}
+              onBlur={() => handleBlur('phone')}
+              placeholder="Enter your phone number (10 digits)"
+              maxLength="10"
+              className={touchedFields.phone && formData.phone && !validatePhone(formData.phone) ? 'error' : ''}
             />
-            <small className="form-hint">Format: 08AAAAA0000A1Z5 (Optional for buyers)</small>
-            {touchedFields.gstin && formData.gstin && !validateGSTIN(formData.gstin) && (
-              <span className="field-error">Invalid GSTIN format</span>
+            {touchedFields.phone && formData.phone && !validatePhone(formData.phone) && (
+              <span className="field-error">Please enter a valid 10-digit phone number</span>
+            )}
+            <small className="form-hint">Optional but recommended for account security</small>
+          </div>
+
+          <div className="form-group checkbox-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={acceptTerms}
+                onChange={(e) => setAcceptTerms(e.target.checked)}
+                required
+              />
+              I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>
+              <span className="required">*</span>
+            </label>
+            {!acceptTerms && touchedFields.acceptTerms && (
+              <span className="field-error">You must agree to the terms</span>
             )}
           </div>
 
@@ -251,10 +280,10 @@ const Register = ({ onSwitchToLogin }) => {
             {isLoading ? (
               <>
                 <span className="spinner"></span>
-                Registering...
+                Creating Account...
               </>
             ) : (
-              'Register'
+              'Create Account'
             )}
           </button>
         </form>
