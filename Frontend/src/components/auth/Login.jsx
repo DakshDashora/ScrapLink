@@ -1,9 +1,11 @@
+// src/components/Auth/Login.jsx
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   loginUser,
   clearErrors,
   clearSuccessFlags,
+  resendVerificationEmail,
   selectAuth,
   selectIsAuthenticated,
 } from '../../redux/slices/authSlices';
@@ -11,7 +13,7 @@ import './Auth.css';
 
 const Login = ({ onSwitchToRegister }) => {
   const dispatch = useDispatch();
-  const { isLoading, error, loginSuccess } = useSelector(selectAuth);
+  const { isLoading, error, loginSuccess, user } = useSelector(selectAuth);
   const isAuthenticated = useSelector(selectIsAuthenticated);
 
   const [formData, setFormData] = useState({
@@ -22,15 +24,15 @@ const Login = ({ onSwitchToRegister }) => {
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [touchedFields, setTouchedFields] = useState({});
+  const [showVerificationMessage, setShowVerificationMessage] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
 
   useEffect(() => {
-   
     dispatch(clearErrors());
     
-   
     const token = localStorage.getItem('access_token');
     if (token && isAuthenticated) {
-      
+      // Redirect to dashboard
       console.log('User already logged in');
     }
 
@@ -42,7 +44,6 @@ const Login = ({ onSwitchToRegister }) => {
 
   useEffect(() => {
     if (loginSuccess && isAuthenticated) {
-      
       console.log('Login successful! Redirecting...');
     }
   }, [loginSuccess, isAuthenticated]);
@@ -65,20 +66,30 @@ const Login = ({ onSwitchToRegister }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     dispatch(clearErrors());
+    setShowVerificationMessage(false);
+    setResendSuccess(false);
 
-    // Validate form
     if (!formData.email || !formData.password) {
       return;
     }
 
     const result = await dispatch(loginUser(formData));
-    if (loginUser.fulfilled.match(result)) {
-      // Success handling is done in useEffect
+    if (loginUser.rejected.match(result)) {
+      if (result.payload?.requiresVerification) {
+        setShowVerificationMessage(true);
+      }
+    }
+  };
+
+  const handleResendVerification = async () => {
+    const result = await dispatch(resendVerificationEmail());
+    if (resendVerificationEmail.fulfilled.match(result)) {
+      setResendSuccess(true);
     }
   };
 
   const handleForgotPassword = () => {
-    // Implement forgot password logic
+    // Navigate to forgot password page
     console.log('Forgot password clicked');
   };
 
@@ -88,10 +99,38 @@ const Login = ({ onSwitchToRegister }) => {
         <h2 className="auth-title">Welcome Back</h2>
         <p className="auth-subtitle">Login to your account</p>
 
-        {error && (
+        {error && typeof error === 'string' && (
           <div className="auth-error">
             <span className="error-icon">⚠</span>
             {error}
+          </div>
+        )}
+
+        {showVerificationMessage && (
+          <div className="auth-warning">
+            <span className="warning-icon">🔒</span>
+            <div>
+              <p><strong>Email not verified</strong></p>
+              <p>Please verify your email address to continue.</p>
+              {!resendSuccess ? (
+                <button 
+                  type="button" 
+                  className="resend-button"
+                  onClick={handleResendVerification}
+                >
+                  Resend Verification Email
+                </button>
+              ) : (
+                <p className="success-text">✓ Verification email sent!</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {resendSuccess && !showVerificationMessage && (
+          <div className="auth-success">
+            <span className="success-icon">✓</span>
+            Verification email has been resent. Please check your inbox.
           </div>
         )}
 
