@@ -25,8 +25,74 @@ def perform_eda(processed_csv_path, reports_dir):
 
     df = pd.read_csv(processed_csv_path)
 
-    # 1. Summary Statistics per Commodity
+    # 1. Summary Statistics per Commodity (price‑bearing only)
     summary_stats = {}
+    # Exclude MCX rows which lack spot_price_inr_kg
+    price_df = df.dropna(subset=['spot_price_inr_kg'])
+    for commodity, group in price_df.groupby('commodity'):
+        prices = group['spot_price_inr_kg']
+        summary_stats[commodity] = {
+            "category": group['category'].iloc[0],
+            "total_records": len(group),
+            "mean_price_inr_kg": round(float(prices.mean()), 2),
+            "std_dev": round(float(prices.std()), 2),
+            "min_price": round(float(prices.min()), 2),
+            "p25": round(float(prices.quantile(0.25)), 2),
+            "median_price": round(float(prices.median()), 2),
+            "p75": round(float(prices.quantile(0.75)), 2),
+            "max_price": round(float(prices.max()), 2),
+            "skewness": round(float(prices.skew()), 3),
+            "volatility_percentage": round(float((prices.std() / prices.mean()) * 100), 2)
+        }
+    logger.debug(f"[EDA STATS] Computed price statistics for {len(summary_stats)} commodities.")
+
+    # 2. Source‑wise statistics (record counts, date coverage)
+    source_stats = {}
+    for src, grp in df.groupby('source'):
+        source_stats[src] = {
+            "records": len(grp),
+            "date_start": str(grp['date'].min()),
+            "date_end": str(grp['date'].max()),
+            "unique_commodities": grp['commodity'].nunique()
+        }
+    logger.debug(f"[EDA SOURCE] Computed stats for {len(source_stats)} sources.")
+
+    # 3. MCX activity statistics (if MCX columns present)
+    mcx_stats = {}
+    if 'mcx_total_value_lakhs' in df.columns:
+        mcx_df = df[df['source'] == 'MCX']
+        for commodity, grp in mcx_df.groupby('commodity'):
+            mcx_stats[commodity] = {
+                "total_records": len(grp),
+                "total_value_lakhs_sum": round(float(grp['mcx_total_value_lakhs'].sum()), 2),
+                "avg_lots_traded": round(float(grp['mcx_lots_traded'].mean()), 2) if 'mcx_lots_traded' in grp else None,
+                "avg_daily_turnover_lakhs": round(float(grp['mcx_avg_daily_turnover_lakhs'].mean()), 2) if 'mcx_avg_daily_turnover_lakhs' in grp else None,
+                "avg_premium_lakhs": round(float(grp['mcx_premium_lakhs'].mean()), 2) if 'mcx_premium_lakhs' in grp else None
+            }
+    logger.debug(f"[EDA MCX] Computed MCX activity stats for {len(mcx_stats)} commodities.")
+
+    # 4. Pivot Table for Commodity Price Correlations (price‑bearing only)
+    pivot_df = price_df.pivot(index='date', columns='commodity', values='spot_price_inr_kg')
+    corr_matrix = pivot_df.corr().round(3).to_dict()
+
+    # 5. Export JSON Report (including new sections)
+    json_report_path = os.path.join(reports_dir, "eda_summary_report.json")
+    full_report_data = {
+        "dataset_info": {
+            "start_date": str(df['date'].min()),
+            "end_date": str(df['date'].max()),
+            "total_rows": len(df),
+            "unique_commodities": df['commodity'].nunique()
+        },
+        "commodity_summary_statistics": summary_stats,
+        "source_statistics": source_stats,
+        "mcx_activity_statistics": mcx_stats,
+        "price_correlation_matrix": corr_matrix
+    }
+    with open(json_report_path, 'w', encoding='utf-8') as f:
+        json.dump(full_report_data, f, indent=2)
+    logger.info(f"[EDA JSON SUCCESS] Saved enriched report to: {json_report_path}")
+    # Duplicate legacy EDA block removed – enriched sections above provide full functionality
     for commodity, group in df.groupby('commodity'):
         prices = group['spot_price_inr_kg']
         summary_stats[commodity] = {

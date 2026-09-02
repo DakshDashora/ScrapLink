@@ -36,6 +36,26 @@ def clean_and_ingest_data(raw_csv_path, processed_dir):
         raise FileNotFoundError(f"[INGEST ERROR] Raw CSV file not found at: {raw_csv_path}")
 
     df = pd.read_csv(raw_csv_path)
+    # ---------------------------------------------------------------------
+    # Normalization – handle both price‑bearing rows and MCX rows
+    # Ensure date format and coerce numeric columns, allowing NaNs for MCX.
+    # ---------------------------------------------------------------------
+    df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+    # List of expected numeric columns (may be missing for MCX rows)
+    numeric_cols = ['spot_price_inr_kg', 'futures_15d_inr_kg', 'trading_volume_mt']
+    for col in numeric_cols:
+        if col in df.columns:
+            # Coerce to numeric, invalid parsing becomes NaN
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            if col == 'trading_volume_mt':
+                # Use pandas nullable integer dtype to keep NaNs
+                df[col] = df[col].astype('Int64')
+            else:
+                df[col] = df[col].round(2)
+    # Do NOT drop rows lacking spot_price – these are expected for MCX source.
+    # Retain all rows; downstream steps will treat NaNs appropriately.
+    initial_len = len(df)
+    logger.debug(f"[INGEST CLEAN] Loaded {initial_len} records (including MCX rows with missing price fields).")
 
     # 1. Cleaning & Validation
     initial_len = len(df)
