@@ -1,89 +1,179 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from datetime import timedelta
-from typing import Optional
-
+from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.models.user import User, UserRole
-from app.schemas.auth import (
-    RegisterRequest, RegisterResponse, 
-    LoginRequest, TokenResponse, UserRole as SchemaUserRole
-)
 from app.security import (
-    verify_password, get_password_hash, 
-    create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+    get_password_hash, verify_password, create_access_token,
+    validate_password, get_current_user
 )
+from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserResponse
+from app.routers.otp import generate_and_send_otp
+from app.models.otp import OTPType
+from app.config import settings
+import uuid
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-def register(
-    payload: RegisterRequest,
-    db: Session = Depends(get_db)
-):
+
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def register_user(user_data: UserRegister, db: Session = Depends(get_db)):
+    """
+    Register a new user
     
-    existing_user = db.query(User).filter(User.email == payload.email).first()
+    - Email must be unique
+    - Phone must be unique
+    - Password must be 8+ chars with uppercase, lowercase, and digits
+    - Role can be Buyer, Seller, or Admin
+    - Email OTP is auto-sent after registration
+    """
+    # Validate password
+    if not validate_password(user_data.password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters with uppercase, lowercase, and digits"
+        )
+    
+    # Check if email exists
+    existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
     
-    if payload.role == SchemaUserRole.SELLER and not payload.gstin:
+    # Check if phone exists
+    existing_phone = db.query(User).filter(User.phone == user_data.phone).first()
+    if existing_phone:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="GSTIN is mandatory for Seller registration"
+            detail="Phone number already registered"
         )
     
-    hashed_password = get_password_hash(payload.password)
-    new_user = User(
-        full_name=payload.full_name,
-        email=payload.email,
-        hashed_password=hashed_password,
-        role=UserRole(payload.role.value),
-        gstin=payload.gstin
+    # Create user with verification status = FALSE
+    hashed_password = get_password_hash(user_data.password)
+    user = User(
+        id=uuid.uuid4(),
+        full_name=user_data.full_name,
+        email=user_data.email,
+        password_hash=hashed_password,
+        phone=user_data.phone,
+        role=UserRole(user_data.role.value),
+        email_verified=False,
+        phone_verified=False
     )
     
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    try:
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Database error creating user"
+        )
     
-    return {
-        "status": "success",
-        "message": "User registered successfully",
-        "user_id": new_user.id,
-        "email": new_user.email,
-        "role": new_user.role
-    }
+    # 🔥 AUTO-SEND EMAIL VERIFICATION OTP
+    try:
+        sent, otp_code = generate_and_send_otp(user, OTPType.EMAIL_VERIFICATION, db)
+        if not sent:
+            print(f"⚠️ Warning: Failed to send email OTP to {user.email}")
+    except Exception as e:
+        print(f"⚠️ Error sending email OTP: {e}")
+    
+    # Return user with verification status
+    return UserResponse(
+        id=str(user.id),
+        full_name=user.full_name,
+        email=user.email,
+        phone=user.phone,
+        role=user.role,
+        email_verified=user.email_verified,
+        phone_verified=user.phone_verified,
+        created_at=user.created_at.isoformat() if user.created_at else None
+    )
 
-@router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
-def login(
-    payload: LoginRequest,
-    db: Session = Depends(get_db)
-):
-    user = db.query(User).filter(User.email == payload.email).first()
-    if not user:
+
+@router.post("/login", response_model=TokenResponse)
+async def login_user(user_data: UserLogin, db: Session = Depends(get_db)):
+    """
+    Login and receive JWT token
+    
+    Requirements:
+    - Email must be verified
+    - Phone must be verified
+    """
+    user = db.query(User).filter(User.email == user_data.email).first()
+    
+    if not user or not verify_password(user_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    if not verify_password(payload.password, user.hashed_password):
+    # ✅ Check email verification (MANDATORY for everyone)
+    if not user.email_verified:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. Please check your email for the verification OTP.",
+            headers={"X-Verification-Required": "email"}
         )
     
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    # ✅ Check phone verification (MANDATORY for everyone)
+    if not user.phone_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Phone not verified. Please check your phone for the verification OTP.",
+            headers={"X-Verification-Required": "phone"}
+        )
+    
+    # Create access token
     access_token = create_access_token(
-        data={"sub": user.email, "user_id": user.id, "role": user.role.value},
-        expires_delta=access_token_expires
+        data={
+            "sub": str(user.id),
+            "email": user.email,
+            "role": user.role.value,
+            "email_verified": user.email_verified,
+            "phone_verified": user.phone_verified
+        }
     )
     
+    return TokenResponse(
+        access_token=access_token,
+        user_id=str(user.id),
+        email=user.email,
+        role=user.role,
+        email_verified=user.email_verified,
+        phone_verified=user.phone_verified,
+        full_name=user.full_name
+    )
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(current_user: User = Depends(get_current_user)):
+    """Get current authenticated user"""
+    return UserResponse(
+        id=str(current_user.id),
+        full_name=current_user.full_name,
+        email=current_user.email,
+        phone=current_user.phone,
+        role=current_user.role,
+        email_verified=current_user.email_verified,
+        phone_verified=current_user.phone_verified,
+        created_at=current_user.created_at.isoformat() if current_user.created_at else None
+    )
+
+
+@router.get("/verification-status")
+async def get_verification_status(current_user: User = Depends(get_current_user)):
+    """Get current user's verification status"""
     return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        "email_verified": current_user.email_verified,
+        "phone_verified": current_user.phone_verified,
+        "fully_verified": current_user.email_verified and current_user.phone_verified,
+        "next_step": None if (current_user.email_verified and current_user.phone_verified) 
+                    else ("EMAIL_VERIFICATION" if not current_user.email_verified 
+                    else "PHONE_VERIFICATION")
     }
