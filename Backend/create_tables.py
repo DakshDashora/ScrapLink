@@ -6,13 +6,11 @@ Run: python create_tables.py
 
 import sys
 import os
-
-# Add the current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.database import engine, init_db
-from app.models import User, Organization, OrganizationMember, OTPRecord
-from app.database import Base
+from app.database import engine, init_db, Base
+from app.models import (User, Organization, OrganizationMember, OTPRecord,
+                       ScrapCategory, ScrapListing, ListingMedia)
 
 def create_tables():
     """Create all tables defined in models"""
@@ -34,6 +32,10 @@ def create_tables():
     print("\n📋 Tables created:")
     for table in tables:
         print(f"   - {table}")
+    
+    print("\n🚀 Next steps:")
+    print("   1. Run: python seed_categories.py")
+    print("   2. Run: uvicorn app.main:app --reload")
 
 if __name__ == "__main__":
     create_tables()
