@@ -1,40 +1,16 @@
-// src/redux/slices/authSlice.js
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { authService } from '../../components/axios/axiosConfig';
+import axiosInstance from '../../api/axiosConfig';
 
-// Initial state matching the Users table structure
-const initialState = {
-  user: {
-    user_id: null,
-    full_name: '',
-    email: '',
-    role: '', // 'Buyer' | 'Seller' | 'Admin'
-    phone: '',
-    email_verified: false,
-    phone_verified: false,
-    created_at: null,
-    updated_at: null,
-  },
-  token: null,
-  isAuthenticated: false,
-  isLoading: false,
-  error: null,
-  registerSuccess: false,
-  loginSuccess: false,
-  emailVerificationSent: false,
-  phoneVerificationSent: false,
-};
+// -------------------- Async Thunks --------------------
 
-// Async Thunks
 export const registerUser = createAsyncThunk(
   'auth/register',
   async (userData, { rejectWithValue }) => {
     try {
-      const response = await authService.register(userData);
+      const response = await axiosInstance.post('/api/auth/register', userData);
       return response.data;
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Registration failed';
-      return rejectWithValue(errorMessage);
+      return rejectWithValue(error.response?.data || error.message);
     }
   }
 );
@@ -43,110 +19,70 @@ export const loginUser = createAsyncThunk(
   'auth/login',
   async (credentials, { rejectWithValue }) => {
     try {
-      const response = await authService.login(credentials);
-      
-      // Store token in localStorage
-      if (response.data.access_token) {
-        localStorage.setItem('access_token', response.data.access_token);
-        localStorage.setItem('token_type', response.data.token_type || 'bearer');
-        localStorage.setItem('expires_in', response.data.expires_in || '3600');
-      }
-      
-      return response.data;
+      const response = await axiosInstance.post('/api/auth/login', credentials);
+      return response.data; // expects { access_token, user, ... }
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Login failed';
-      
-      // Check if email is not verified
-      if (error.response?.data?.requires_verification) {
-        return rejectWithValue({
-          message: errorMessage,
-          requiresVerification: true,
-          email: error.response?.data?.email,
-        });
-      }
-      
-      return rejectWithValue(errorMessage);
+      return rejectWithValue(error.response?.data || error.message);
     }
-  }
-);
-
-export const logoutUser = createAsyncThunk(
-  'auth/logout',
-  async (_, { rejectWithValue }) => {
-    try {
-      await authService.logout();
-    } catch (error) {
-      // Even if logout fails, clear local storage
-    } finally {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('token_type');
-      localStorage.removeItem('expires_in');
-    }
-    return null;
   }
 );
 
 export const getCurrentUser = createAsyncThunk(
-  'auth/getCurrentUser',
+  'auth/me',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await authService.getCurrentUser();
+      const response = await axiosInstance.get('/api/auth/me');
       return response.data;
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Failed to fetch user';
-      return rejectWithValue(errorMessage);
+      return rejectWithValue(error.response?.data || error.message);
+    }
+  }
+);
+
+export const sendEmailOtp = createAsyncThunk(
+  'auth/sendEmailOtp',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await axiosInstance.post('/api/auth/send-email-otp');
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message);
     }
   }
 );
 
 export const verifyEmail = createAsyncThunk(
   'auth/verifyEmail',
-  async (token, { rejectWithValue }) => {
+  async (otp, { rejectWithValue }) => {
     try {
-      const response = await authService.verifyEmail(token);
+      const response = await axiosInstance.post('/api/auth/verify-email', { otp });
       return response.data;
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Email verification failed';
-      return rejectWithValue(errorMessage);
+      return rejectWithValue(error.response?.data || error.message);
+    }
+  }
+);
+
+export const sendPhoneOtp = createAsyncThunk(
+  'auth/sendPhoneOtp',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await axiosInstance.post('/api/auth/send-phone-otp');
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message);
     }
   }
 );
 
 export const verifyPhone = createAsyncThunk(
   'auth/verifyPhone',
-  async (code, { rejectWithValue }) => {
+  async (otp, { rejectWithValue }) => {
     try {
-      const response = await authService.verifyPhone(code);
+      const response = await axiosInstance.post('/api/auth/verify-phone', { otp });
       return response.data;
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Phone verification failed';
-      return rejectWithValue(errorMessage);
-    }
-  }
-);
-
-export const requestPhoneVerification = createAsyncThunk(
-  'auth/requestPhoneVerification',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await authService.requestPhoneVerification();
-      return response.data;
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Failed to send verification code';
-      return rejectWithValue(errorMessage);
-    }
-  }
-);
-
-export const resendVerificationEmail = createAsyncThunk(
-  'auth/resendVerificationEmail',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await authService.resendVerificationEmail();
-      return response.data;
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Failed to resend verification email';
-      return rejectWithValue(errorMessage);
+      return rejectWithValue(error.response?.data || error.message);
     }
   }
 );
@@ -155,11 +91,10 @@ export const forgotPassword = createAsyncThunk(
   'auth/forgotPassword',
   async (email, { rejectWithValue }) => {
     try {
-      const response = await authService.forgotPassword(email);
+      const response = await axiosInstance.post('/api/auth/forgot-password', { email });
       return response.data;
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Failed to send reset email';
-      return rejectWithValue(errorMessage);
+      return rejectWithValue(error.response?.data || error.message);
     }
   }
 );
@@ -168,55 +103,43 @@ export const resetPassword = createAsyncThunk(
   'auth/resetPassword',
   async ({ token, newPassword }, { rejectWithValue }) => {
     try {
-      const response = await authService.resetPassword(token, newPassword);
+      const response = await axiosInstance.post('/api/auth/reset-password', {
+        token,
+        new_password: newPassword,
+      });
       return response.data;
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Password reset failed';
-      return rejectWithValue(errorMessage);
+      return rejectWithValue(error.response?.data || error.message);
     }
   }
 );
 
-export const updateProfile = createAsyncThunk(
-  'auth/updateProfile',
-  async (userData, { rejectWithValue }) => {
-    try {
-      const response = await authService.updateProfile(userData);
-      return response.data;
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Profile update failed';
-      return rejectWithValue(errorMessage);
-    }
-  }
-);
+// -------------------- Slice --------------------
 
-// Auth Slice
+const initialState = {
+  user: null,
+  token: localStorage.getItem('accessToken') || null,
+  isLoading: false,
+  error: null,
+  emailVerified: false,
+  phoneVerified: false,
+  otpSent: false,
+};
+
 const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    clearErrors: (state) => {
+    logout: (state) => {
+      state.user = null;
+      state.token = null;
+      localStorage.removeItem('accessToken');
+    },
+    clearError: (state) => {
       state.error = null;
     },
-    clearSuccessFlags: (state) => {
-      state.registerSuccess = false;
-      state.loginSuccess = false;
-      state.emailVerificationSent = false;
-      state.phoneVerificationSent = false;
-    },
-    setAuthenticated: (state, action) => {
-      state.isAuthenticated = action.payload;
-    },
-    restoreSession: (state) => {
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        state.token = token;
-        state.isAuthenticated = true;
-      }
-    },
-    updateUserField: (state, action) => {
-      const { field, value } = action.payload;
-      state.user[field] = value;
+    resetOtpSent: (state) => {
+      state.otpSent = false;
     },
   },
   extraReducers: (builder) => {
@@ -225,173 +148,125 @@ const authSlice = createSlice({
       .addCase(registerUser.pending, (state) => {
         state.isLoading = true;
         state.error = null;
-        state.registerSuccess = false;
       })
       .addCase(registerUser.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.registerSuccess = true;
-        state.user = {
-          ...state.user,
-          ...action.payload.data,
-        };
-        state.error = null;
-        state.emailVerificationSent = true;
+        // registration does not return token; user must login
       })
       .addCase(registerUser.rejected, (state, action) => {
         state.isLoading = false;
-        state.registerSuccess = false;
-        state.error = action.payload || 'Registration failed';
+        state.error = action.payload?.detail || 'Registration failed';
       })
-      
       // Login
       .addCase(loginUser.pending, (state) => {
         state.isLoading = true;
         state.error = null;
-        state.loginSuccess = false;
       })
       .addCase(loginUser.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.isAuthenticated = true;
-        state.loginSuccess = true;
         state.token = action.payload.access_token;
-        state.user = {
-          ...state.user,
-          ...action.payload.user,
-        };
-        state.error = null;
+        state.user = action.payload.user;
+        localStorage.setItem('accessToken', action.payload.access_token);
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.isLoading = false;
-        state.isAuthenticated = false;
-        state.loginSuccess = false;
-        state.token = null;
-        state.error = action.payload.message || action.payload || 'Login failed';
-        
-        // Handle email verification requirement
-        if (action.payload?.requiresVerification) {
-          state.user.email = action.payload.email;
-        }
+        state.error = action.payload?.detail || 'Login failed';
       })
-      
-      // Logout
-      .addCase(logoutUser.fulfilled, (state) => {
-        state.isLoading = false;
-        state.isAuthenticated = false;
-        state.token = null;
-        state.user = initialState.user;
-        state.error = null;
-        state.registerSuccess = false;
-        state.loginSuccess = false;
-        state.emailVerificationSent = false;
-        state.phoneVerificationSent = false;
-      })
-      
-      // Get Current User
+      // Get current user
       .addCase(getCurrentUser.pending, (state) => {
         state.isLoading = true;
       })
       .addCase(getCurrentUser.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.user = {
-          ...state.user,
-          ...action.payload.data,
-        };
-        state.isAuthenticated = true;
-        state.error = null;
+        state.user = action.payload;
       })
       .addCase(getCurrentUser.rejected, (state, action) => {
         state.isLoading = false;
-        state.isAuthenticated = false;
-        state.user = initialState.user;
-        state.error = action.payload || 'Failed to fetch user';
+        state.error = action.payload?.detail || 'Failed to fetch user';
+        state.token = null;
+        localStorage.removeItem('accessToken');
       })
-      
-      // Verify Email
-      .addCase(verifyEmail.fulfilled, (state, action) => {
-        state.user.email_verified = true;
+      // Send Email OTP
+      .addCase(sendEmailOtp.pending, (state) => {
+        state.isLoading = true;
         state.error = null;
+      })
+      .addCase(sendEmailOtp.fulfilled, (state) => {
+        state.isLoading = false;
+        state.otpSent = true;
+      })
+      .addCase(sendEmailOtp.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload?.detail || 'Failed to send OTP';
+      })
+      // Verify Email
+      .addCase(verifyEmail.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(verifyEmail.fulfilled, (state) => {
+        state.isLoading = false;
+        state.emailVerified = true;
+        if (state.user) state.user.email_verified = true;
       })
       .addCase(verifyEmail.rejected, (state, action) => {
-        state.error = action.payload || 'Email verification failed';
+        state.isLoading = false;
+        state.error = action.payload?.detail || 'Verification failed';
       })
-      
-      // Verify Phone
-      .addCase(verifyPhone.fulfilled, (state, action) => {
-        state.user.phone_verified = true;
-        state.phoneVerificationSent = false;
+      // Send Phone OTP
+      .addCase(sendPhoneOtp.pending, (state) => {
+        state.isLoading = true;
         state.error = null;
+      })
+      .addCase(sendPhoneOtp.fulfilled, (state) => {
+        state.isLoading = false;
+        state.otpSent = true;
+      })
+      .addCase(sendPhoneOtp.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload?.detail || 'Failed to send OTP';
+      })
+      // Verify Phone
+      .addCase(verifyPhone.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(verifyPhone.fulfilled, (state) => {
+        state.isLoading = false;
+        state.phoneVerified = true;
+        if (state.user) state.user.phone_verified = true;
       })
       .addCase(verifyPhone.rejected, (state, action) => {
-        state.error = action.payload || 'Phone verification failed';
+        state.isLoading = false;
+        state.error = action.payload?.detail || 'Verification failed';
       })
-      
-      // Request Phone Verification
-      .addCase(requestPhoneVerification.fulfilled, (state) => {
-        state.phoneVerificationSent = true;
-        state.error = null;
-      })
-      .addCase(requestPhoneVerification.rejected, (state, action) => {
-        state.phoneVerificationSent = false;
-        state.error = action.payload || 'Failed to send verification code';
-      })
-      
-      // Resend Verification Email
-      .addCase(resendVerificationEmail.fulfilled, (state) => {
-        state.emailVerificationSent = true;
-        state.error = null;
-      })
-      .addCase(resendVerificationEmail.rejected, (state, action) => {
-        state.error = action.payload || 'Failed to resend verification email';
-      })
-      
       // Forgot Password
-      .addCase(forgotPassword.fulfilled, (state) => {
+      .addCase(forgotPassword.pending, (state) => {
+        state.isLoading = true;
         state.error = null;
+      })
+      .addCase(forgotPassword.fulfilled, (state) => {
+        state.isLoading = false;
+        state.otpSent = true; // reusing flag
       })
       .addCase(forgotPassword.rejected, (state, action) => {
-        state.error = action.payload || 'Failed to send reset email';
+        state.isLoading = false;
+        state.error = action.payload?.detail || 'Request failed';
       })
-      
       // Reset Password
-      .addCase(resetPassword.fulfilled, (state) => {
+      .addCase(resetPassword.pending, (state) => {
+        state.isLoading = true;
         state.error = null;
+      })
+      .addCase(resetPassword.fulfilled, (state) => {
+        state.isLoading = false;
       })
       .addCase(resetPassword.rejected, (state, action) => {
-        state.error = action.payload || 'Password reset failed';
-      })
-      
-      // Update Profile
-      .addCase(updateProfile.fulfilled, (state, action) => {
-        state.user = {
-          ...state.user,
-          ...action.payload.data,
-        };
-        state.error = null;
-      })
-      .addCase(updateProfile.rejected, (state, action) => {
-        state.error = action.payload || 'Profile update failed';
+        state.isLoading = false;
+        state.error = action.payload?.detail || 'Reset failed';
       });
   },
 });
 
-// Export actions
-export const {
-  clearErrors,
-  clearSuccessFlags,
-  setAuthenticated,
-  restoreSession,
-  updateUserField,
-} = authSlice.actions;
-
-// Export selectors
-export const selectAuth = (state) => state.auth;
-export const selectUser = (state) => state.auth.user;
-export const selectIsAuthenticated = (state) => state.auth.isAuthenticated;
-export const selectIsLoading = (state) => state.auth.isLoading;
-export const selectError = (state) => state.auth.error;
-export const selectToken = (state) => state.auth.token;
-export const selectEmailVerified = (state) => state.auth.user.email_verified;
-export const selectPhoneVerified = (state) => state.auth.user.phone_verified;
-
-// Export reducer
+export const { logout, clearError, resetOtpSent } = authSlice.actions;
 export default authSlice.reducer;
