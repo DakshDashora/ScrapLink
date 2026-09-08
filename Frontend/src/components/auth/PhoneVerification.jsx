@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { sendPhoneOtp, verifyPhone, resetOtpSent, clearError } from '../features/auth/authSlice';
+import { sendPhoneOtp, verifyPhone, resetOtpSent, clearError } from '../../redux/slices/authSlices';
 
 const PhoneVerification = () => {
   const [otp, setOtp] = useState('');

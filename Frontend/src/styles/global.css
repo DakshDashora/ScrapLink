@@ -1,0 +1,211 @@
+/* Reset & base */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #f4f7fa;
+  color: #333;
+}
+
+/* Landing page */
+.landing {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+  color: #fff;
+}
+.landing h1 {
+  font-size: 4rem;
+  margin-bottom: 0.5rem;
+}
+.landing p {
+  font-size: 1.5rem;
+  margin-bottom: 2rem;
+  opacity: 0.9;
+}
+.cta-buttons a {
+  margin: 0 1rem;
+  padding: 0.75rem 2rem;
+  border-radius: 30px;
+  text-decoration: none;
+  font-weight: 600;
+  display: inline-block;
+}
+.btn-primary {
+  background: #fff;
+  color: #1e3c72;
+}
+.btn-secondary {
+  background: transparent;
+  color: #fff;
+  border: 2px solid #fff;
+}
+.btn-primary:hover, .btn-secondary:hover {
+  transform: scale(1.05);
+  transition: 0.2s;
+}
+
+/* Auth pages (login, register, etc.) */
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #f0f2f5;
+}
+.auth-card {
+  background: #fff;
+  padding: 2.5rem;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  width: 100%;
+  max-width: 420px;
+}
+.auth-card h2 {
+  margin-bottom: 1.5rem;
+  text-align: center;
+  color: #1e3c72;
+}
+.auth-card p {
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+  color: #555;
+}
+.auth-card form input,
+.auth-card form select {
+  width: 100%;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+.auth-card form button {
+  width: 100%;
+  padding: 0.75rem;
+  background: #1e3c72;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.auth-card form button:disabled {
+  background: #7a8daa;
+  cursor: not-allowed;
+}
+.auth-card form button:hover:not(:disabled) {
+  background: #2a5298;
+}
+
+.error-message {
+  color: #d32f2f;
+  background: #fdecea;
+  padding: 0.5rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+.auth-links {
+  margin-top: 1rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.auth-links a,
+.link-button {
+  color: #1e3c72;
+  text-decoration: none;
+  font-size: 0.9rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.auth-links a:hover,
+.link-button:hover {
+  text-decoration: underline;
+}
+
+/* Dashboard Layout */
+.dashboard-layout {
+  display: grid;
+  grid-template-rows: 60px 1fr;
+  grid-template-columns: 220px 1fr;
+  grid-template-areas:
+    "header header"
+    "sidebar content";
+  height: 100vh;
+}
+.dashboard-header {
+  grid-area: header;
+  background: #1e3c72;
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 2rem;
+}
+.dashboard-header .logo {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+.dashboard-header nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+.dashboard-header nav button {
+  background: #2a5298;
+  border: none;
+  color: #fff;
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  cursor: pointer;
+}
+.dashboard-header nav button:hover {
+  background: #3a6cb0;
+}
+.dashboard-sidebar {
+  grid-area: sidebar;
+  background: #f8f9fa;
+  padding: 1.5rem 0;
+  border-right: 1px solid #e0e0e0;
+}
+.dashboard-sidebar ul {
+  list-style: none;
+}
+.dashboard-sidebar li {
+  padding: 0.75rem 2rem;
+}
+.dashboard-sidebar li a {
+  text-decoration: none;
+  color: #333;
+  font-weight: 500;
+}
+.dashboard-sidebar li a:hover {
+  color: #1e3c72;
+}
+.dashboard-content {
+  grid-area: content;
+  padding: 2rem;
+  background: #fff;
+  overflow-y: auto;
+}
+
+.dashboard-home h2 {
+  color: #1e3c72;
+  margin-bottom: 1rem;
+}
+.dashboard-home p {
+  margin: 0.5rem 0;
+}
