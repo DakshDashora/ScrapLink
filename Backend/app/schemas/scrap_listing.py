@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any,List
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
@@ -89,3 +89,10 @@ class ListingSearchParams(BaseModel):
     size: int = Field(20, ge=1, le=100)
     sort_by: Optional[str] = "created_at"
     sort_order: Optional[str] = "desc"
+
+class ListingListResponse(BaseModel):
+    items: List[ListingResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
