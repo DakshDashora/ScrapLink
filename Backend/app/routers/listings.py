@@ -1,18 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import desc
+from sqlalchemy import desc, asc
 from typing import Optional
 import uuid
 
 from app.database import get_db
 from app.models.user import User
-from app.models.scrap_listing import ScrapListing, ListingStatus
+from app.models.scrap_listing import ScrapListing, ListingStatus, ListingUnit
 from app.models.organization_member import OrganizationMember
 from app.models.scrap_category import ScrapCategory
 from app.models.organization import Organization
 from app.security import get_current_user
 from app.schemas.scrap_listing import (
-    ListingCreate, ListingUpdate, ListingResponse
+    ListingCreate, ListingUpdate, ListingResponse,
+    ListingListResponse
 )
 
 router = APIRouter(prefix="/listings", tags=["Listings"])
@@ -54,7 +55,7 @@ def build_listing_response(listing: ScrapListing) -> dict:
 
 
 # ============================================
-# API ENDPOINTS - DAY 1
+# API ENDPOINTS
 # ============================================
 
 @router.post("/", response_model=ListingResponse, status_code=status.HTTP_201_CREATED)
@@ -135,6 +136,210 @@ async def create_listing(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error creating listing: {str(e)}"
         )
+
+
+@router.get("/", response_model=ListingListResponse)
+async def get_listings(
+    # Filter parameters
+    category_id: Optional[str] = Query(None, description="Filter by category ID"),
+    material_name: Optional[str] = Query(None, description="Filter by material name (partial match)"),
+    min_price: Optional[float] = Query(None, description="Minimum asking price"),
+    max_price: Optional[float] = Query(None, description="Maximum asking price"),
+    min_quantity: Optional[float] = Query(None, description="Minimum quantity"),
+    max_quantity: Optional[float] = Query(None, description="Maximum quantity"),
+    unit: Optional[ListingUnit] = Query(None, description="Unit (kg, tonne, unit, etc.)"),
+    status: Optional[ListingStatus] = Query(ListingStatus.ACTIVE, description="Listing status"),
+    
+    # Location filter
+    latitude: Optional[float] = Query(None, description="Latitude for location search"),
+    longitude: Optional[float] = Query(None, description="Longitude for location search"),
+    radius_km: Optional[float] = Query(10.0, description="Search radius in km"),
+    
+    # Pagination
+    page: int = Query(1, ge=1, description="Page number (starts at 1)"),
+    size: int = Query(20, ge=1, le=100, description="Items per page (max 100)"),
+    
+    # Sorting
+    sort_by: str = Query("created_at", description="Sort field (created_at, asking_price, quantity)"),
+    sort_order: str = Query("desc", description="Sort order (asc, desc)"),
+    
+    db: Session = Depends(get_db)
+    # ✅ No current_user - this is PUBLIC!
+):
+    """
+    Get listings with search and filters
+    
+    Features:
+    - Public endpoint (no authentication required for browsing)
+    - Only active listings are shown by default
+    - Supports pagination, sorting, and multiple filters
+    - Partial text search on material name
+    - Price and quantity range filters
+    """
+    
+    print(f"\n🔍 Searching listings...")
+    print(f"   Filters: category={category_id}, material={material_name}")
+    print(f"   Page: {page}, Size: {size}")
+    
+    # Build query
+    query = db.query(ScrapListing).options(
+        joinedload(ScrapListing.seller_org),
+        joinedload(ScrapListing.category)
+    )
+    
+    # Filter by status (default: ACTIVE)
+    if status:
+        query = query.filter(ScrapListing.availability_status == status)
+    else:
+        query = query.filter(ScrapListing.availability_status == ListingStatus.ACTIVE)
+    
+    # Filter by category
+    if category_id:
+        try:
+            query = query.filter(ScrapListing.category_id == uuid.UUID(category_id))
+            print(f"   ✅ Filtering by category: {category_id}")
+        except ValueError:
+            print(f"   ❌ Invalid category ID: {category_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid category ID format"
+            )
+    
+    # Filter by material name (partial match - case insensitive)
+    if material_name:
+        query = query.filter(ScrapListing.material_name.ilike(f"%{material_name}%"))
+        print(f"   ✅ Filtering by material: {material_name}")
+    
+    # Filter by price range
+    if min_price is not None:
+        query = query.filter(ScrapListing.asking_price >= min_price)
+        print(f"   ✅ Filtering by min price: {min_price}")
+    if max_price is not None:
+        query = query.filter(ScrapListing.asking_price <= max_price)
+        print(f"   ✅ Filtering by max price: {max_price}")
+    
+    # Filter by quantity range
+    if min_quantity is not None:
+        query = query.filter(ScrapListing.quantity >= min_quantity)
+    if max_quantity is not None:
+        query = query.filter(ScrapListing.quantity <= max_quantity)
+    
+    # Filter by unit
+    if unit:
+        query = query.filter(ScrapListing.unit == unit)
+        print(f"   ✅ Filtering by unit: {unit}")
+    
+    # Location-based filtering (simplified for now)
+    if latitude and longitude:
+        print(f"   📍 Location filter: lat={latitude}, lon={longitude}, radius={radius_km}km")
+    
+    # Count total before pagination
+    total = query.count()
+    print(f"   📊 Total matching listings: {total}")
+    
+    # Sorting
+    if sort_by == "created_at":
+        order_col = ScrapListing.created_at
+    elif sort_by == "asking_price":
+        order_col = ScrapListing.asking_price
+    elif sort_by == "quantity":
+        order_col = ScrapListing.quantity
+    else:
+        order_col = ScrapListing.created_at
+    
+    if sort_order.lower() == "asc":
+        query = query.order_by(asc(order_col))
+    else:
+        query = query.order_by(desc(order_col))
+    
+    # Pagination
+    offset = (page - 1) * size
+    query = query.offset(offset).limit(size)
+    
+    listings = query.all()
+    print(f"   ✅ Retrieved {len(listings)} listings for page {page}")
+    
+    # Build response
+    items = [build_listing_response(l) for l in listings]
+    pages = (total + size - 1) // size if total > 0 else 0
+    
+    return ListingListResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        pages=pages
+    )
+
+
+@router.get("/my-listings", response_model=ListingListResponse)
+async def get_my_listings(
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(20, ge=1, le=100, description="Items per page"),
+    status: Optional[ListingStatus] = Query(None, description="Filter by status"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get listings for the current user's organization(s)
+    
+    Features:
+    - Requires authentication
+    - Returns all listings from organizations the user belongs to
+    - Supports pagination and status filtering
+    """
+    
+    print(f"\n📋 Fetching my listings for user: {current_user.email}")
+    
+    # Get user's organizations
+    org_memberships = db.query(OrganizationMember).filter(
+        OrganizationMember.user_id == current_user.id
+    ).all()
+    
+    if not org_memberships:
+        print(f"   ⚠️ User is not a member of any organization")
+        return ListingListResponse(
+            items=[],
+            total=0,
+            page=page,
+            size=size,
+            pages=0
+        )
+    
+    org_ids = [m.organization_id for m in org_memberships]
+    print(f"   ✅ User belongs to {len(org_ids)} organization(s)")
+    
+    # Build query
+    query = db.query(ScrapListing).options(
+        joinedload(ScrapListing.seller_org),
+        joinedload(ScrapListing.category)
+    ).filter(ScrapListing.seller_org_id.in_(org_ids))
+    
+    # Filter by status if provided
+    if status:
+        query = query.filter(ScrapListing.availability_status == status)
+        print(f"   ✅ Filtering by status: {status.value}")
+    
+    # Count total
+    total = query.count()
+    print(f"   📊 Total listings: {total}")
+    
+    # Pagination
+    offset = (page - 1) * size
+    listings = query.order_by(desc(ScrapListing.created_at)).offset(offset).limit(size).all()
+    
+    items = [build_listing_response(l) for l in listings]
+    pages = (total + size - 1) // size if total > 0 else 0
+    
+    print(f"   ✅ Retrieved {len(listings)} listings for page {page}")
+    
+    return ListingListResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        pages=pages
+    )
 
 
 @router.get("/{listing_id}", response_model=ListingResponse)
