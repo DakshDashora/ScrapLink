@@ -3,10 +3,8 @@ from sqlalchemy import create_engine
 import os
 import sys
 
-# Load .env environment variables automatically
 try:
     from dotenv import load_dotenv
-    # Search for .env in Backend folder or root ScrapLink folder
     current_dir = os.path.dirname(os.path.abspath(__file__))
     backend_dir = os.path.dirname(current_dir)
     root_dir = os.path.dirname(backend_dir)
@@ -25,8 +23,8 @@ from logger import logger
 
 def clean_and_ingest_data(raw_csv_path, processed_dir):
     """
-    Cleans raw commodity data, standardizes formats, exports processed dataset,
-    and logs records permanently into the PostgreSQL database table 'commodity_prices'.
+    Cleans raw commodity data, fills missing values per commodity group,
+    exports processed dataset, and ingests records into PostgreSQL.
     """
     os.makedirs(processed_dir, exist_ok=True)
     logger.info(f"[INGEST SEGMENT] Processing raw CSV file: {raw_csv_path}")
@@ -36,45 +34,38 @@ def clean_and_ingest_data(raw_csv_path, processed_dir):
         raise FileNotFoundError(f"[INGEST ERROR] Raw CSV file not found at: {raw_csv_path}")
 
     df = pd.read_csv(raw_csv_path)
-    # ---------------------------------------------------------------------
-    # Normalization – handle both price‑bearing rows and MCX rows
-    # Ensure date format and coerce numeric columns, allowing NaNs for MCX.
-    # ---------------------------------------------------------------------
+    initial_len = len(df)
+
     df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
-    # List of expected numeric columns (may be missing for MCX rows)
     numeric_cols = ['spot_price_inr_kg', 'futures_15d_inr_kg', 'trading_volume_mt']
+    
     for col in numeric_cols:
         if col in df.columns:
-            # Coerce to numeric, invalid parsing becomes NaN
             df[col] = pd.to_numeric(df[col], errors='coerce')
-            if col == 'trading_volume_mt':
-                # Use pandas nullable integer dtype to keep NaNs
-                df[col] = df[col].astype('Int64')
-            else:
-                df[col] = df[col].round(2)
-    # Do NOT drop rows lacking spot_price – these are expected for MCX source.
-    # Retain all rows; downstream steps will treat NaNs appropriately.
-    initial_len = len(df)
-    logger.debug(f"[INGEST CLEAN] Loaded {initial_len} records (including MCX rows with missing price fields).")
 
-    # 1. Cleaning & Validation
-    initial_len = len(df)
-    df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
-    df = df.dropna(subset=['spot_price_inr_kg'])
-    df['spot_price_inr_kg'] = df['spot_price_inr_kg'].round(2)
-    df['futures_15d_inr_kg'] = df['futures_15d_inr_kg'].round(2)
-    df['trading_volume_mt'] = df['trading_volume_mt'].astype(int)
-
-    # Sort deterministically
+    # Sort deterministically by commodity and date
     df = df.sort_values(by=['commodity', 'date']).reset_index(drop=True)
-    logger.debug(f"[INGEST CLEAN] Cleaned {initial_len} records down to {len(df)} valid records.")
 
-    # 2. Save Processed CSV
+    # Per-commodity interpolation & forward/backward fill for price fields
+    filled_dfs = []
+    for comm, group in df.groupby('commodity'):
+        g = group.copy()
+        g['spot_price_inr_kg'] = g['spot_price_inr_kg'].ffill().bfill().round(2)
+        g['futures_15d_inr_kg'] = g['futures_15d_inr_kg'].fillna(g['spot_price_inr_kg'] * 1.01).round(2)
+        g['trading_volume_mt'] = g['trading_volume_mt'].fillna(1500).astype(int)
+        filled_dfs.append(g)
+
+    df_clean = pd.concat(filled_dfs, ignore_index=True)
+    df_clean = df_clean.dropna(subset=['spot_price_inr_kg']).reset_index(drop=True)
+
+    logger.info(f"[INGEST CLEAN] Retained {len(df_clean):,} of {initial_len:,} raw records after cleaning & interpolation.")
+
+    # Save Processed CSV
     processed_csv = os.path.join(processed_dir, "merged_commodity_prices.csv")
-    df.to_csv(processed_csv, index=False)
-    logger.info(f"[INGEST SUCCESS] Processed dataset saved to: {processed_csv} ({len(df):,} records)")
+    df_clean.to_csv(processed_csv, index=False)
+    logger.info(f"[INGEST SUCCESS] Processed dataset saved to: {processed_csv} ({len(df_clean):,} records)")
 
-    # 3. Clean up any leftover legacy SQLite files
+    # Cleanup legacy SQLite file if present
     legacy_sqlite = os.path.join(os.path.dirname(processed_dir), "commodity_prices.db")
     if os.path.exists(legacy_sqlite):
         try:
@@ -83,17 +74,17 @@ def clean_and_ingest_data(raw_csv_path, processed_dir):
         except Exception as e:
             logger.warning(f"[CLEANUP WARN] Could not remove legacy SQLite file: {e}")
 
-    # 4. Ingest permanently into PostgreSQL Database via DATABASE_URL
+    # Ingest into PostgreSQL if DATABASE_URL is set
     db_url = os.getenv("DATABASE_URL")
     if db_url:
         try:
             engine = create_engine(db_url)
-            df.to_sql("commodity_prices", engine, if_exists="replace", index=False)
-            logger.info(f"[POSTGRESQL DB SUCCESS] Ingested {len(df):,} records into PostgreSQL table 'commodity_prices' via SQLAlchemy")
+            df_clean.to_sql("commodity_prices", engine, if_exists="replace", index=False)
+            logger.info(f"[POSTGRESQL DB SUCCESS] Ingested {len(df_clean):,} records into PostgreSQL table 'commodity_prices'")
         except Exception as e:
-            logger.warning(f"[POSTGRESQL DB WARNING] PostgreSQL connection skipped ({e}). Processed CSV dataset saved permanently for ML pipeline.")
+            logger.warning(f"[POSTGRESQL DB WARNING] PostgreSQL push skipped ({e}). Processed CSV preserved locally.")
     else:
-        logger.info("[POSTGRESQL DB INFO] DATABASE_URL not set in .env. Skipping cloud DB push and preserving local processed CSV.")
+        logger.info("[POSTGRESQL DB INFO] DATABASE_URL not set in .env. Local processed CSV saved.")
 
     return processed_csv
 
