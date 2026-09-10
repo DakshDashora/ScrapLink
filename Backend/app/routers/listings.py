@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query,UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, asc
 from typing import Optional
@@ -15,13 +15,15 @@ from app.schemas.scrap_listing import (
     ListingCreate, ListingUpdate, ListingResponse,
     ListingListResponse
 )
+from app.models.listing_media import ListingMedia
+from app.schemas.listing_media import MediaResponse, MediaUploadResponse, MediaListResponse
+from app.utils.cloudinary_service import upload_image, delete_image
+from typing import List
+
 
 router = APIRouter(prefix="/listings", tags=["Listings"])
 
 
-# ============================================
-# HELPER FUNCTIONS
-# ============================================
 
 def check_listing_owner(listing: ScrapListing, user_id: str, db: Session) -> bool:
     """Check if user is a member of the listing's organization"""
@@ -31,9 +33,21 @@ def check_listing_owner(listing: ScrapListing, user_id: str, db: Session) -> boo
     ).first()
     return member is not None
 
-
 def build_listing_response(listing: ScrapListing) -> dict:
     """Build response dict from listing object"""
+    
+    # Build media list
+    media_list = []
+    if hasattr(listing, 'media') and listing.media:
+        for m in listing.media:
+            media_list.append({
+                "id": str(m.id),
+                "file_url": m.file_url,
+                "file_type": m.file_type,
+                "is_primary": m.is_primary,
+                "created_at": m.created_at.isoformat() if m.created_at else None
+            })
+    
     return {
         "id": str(listing.id),
         "seller_org_id": str(listing.seller_org_id),
@@ -50,13 +64,9 @@ def build_listing_response(listing: ScrapListing) -> dict:
         "availability_status": listing.availability_status.value,
         "created_at": listing.created_at.isoformat() if listing.created_at else None,
         "updated_at": listing.updated_at.isoformat() if listing.updated_at else None,
-        "media": []
+        "media": media_list
     }
 
-
-# ============================================
-# API ENDPOINTS
-# ============================================
 
 @router.post("/", response_model=ListingResponse, status_code=status.HTTP_201_CREATED)
 async def create_listing(
@@ -71,9 +81,8 @@ async def create_listing(
     - Category must exist
     """
     
-    print(f"\n📝 Creating listing for user: {current_user.email}")
+    print(f"\n Creating listing for user: {current_user.email}")
     
-    # 1. Get user's organization
     org_member = db.query(OrganizationMember).filter(
         OrganizationMember.user_id == current_user.id
     ).first()
@@ -84,9 +93,8 @@ async def create_listing(
             detail="User is not a member of any organization. Please create an organization first."
         )
     
-    print(f"✅ User is member of organization: {org_member.organization_id}")
+    print(f"User is member of organization: {org_member.organization_id}")
     
-    # 2. Verify category exists
     category = db.query(ScrapCategory).filter(
         ScrapCategory.id == uuid.UUID(listing_data.category_id)
     ).first()
@@ -97,9 +105,8 @@ async def create_listing(
             detail="Invalid category ID"
         )
     
-    print(f"✅ Category found: {category.name}")
+    print(f" Category found: {category.name}")
     
-    # 3. Create listing
     try:
         listing = ScrapListing(
             id=uuid.uuid4(),
@@ -119,9 +126,8 @@ async def create_listing(
         db.commit()
         db.refresh(listing)
         
-        print(f"✅ Listing created with ID: {listing.id}")
+        print(f" Listing created with ID: {listing.id}")
         
-        # Reload with relationships
         listing = db.query(ScrapListing).options(
             joinedload(ScrapListing.seller_org),
             joinedload(ScrapListing.category)
@@ -131,7 +137,7 @@ async def create_listing(
         
     except Exception as e:
         db.rollback()
-        print(f"❌ Error creating listing: {str(e)}")
+        print(f" Error creating listing: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error creating listing: {str(e)}"
@@ -140,7 +146,6 @@ async def create_listing(
 
 @router.get("/", response_model=ListingListResponse)
 async def get_listings(
-    # Filter parameters
     category_id: Optional[str] = Query(None, description="Filter by category ID"),
     material_name: Optional[str] = Query(None, description="Filter by material name (partial match)"),
     min_price: Optional[float] = Query(None, description="Minimum asking price"),
@@ -155,16 +160,13 @@ async def get_listings(
     longitude: Optional[float] = Query(None, description="Longitude for location search"),
     radius_km: Optional[float] = Query(10.0, description="Search radius in km"),
     
-    # Pagination
     page: int = Query(1, ge=1, description="Page number (starts at 1)"),
     size: int = Query(20, ge=1, le=100, description="Items per page (max 100)"),
     
-    # Sorting
     sort_by: str = Query("created_at", description="Sort field (created_at, asking_price, quantity)"),
     sort_order: str = Query("desc", description="Sort order (asc, desc)"),
     
     db: Session = Depends(get_db)
-    # ✅ No current_user - this is PUBLIC!
 ):
     """
     Get listings with search and filters
@@ -177,67 +179,57 @@ async def get_listings(
     - Price and quantity range filters
     """
     
-    print(f"\n🔍 Searching listings...")
+    print(f"\n Searching listings...")
     print(f"   Filters: category={category_id}, material={material_name}")
     print(f"   Page: {page}, Size: {size}")
     
-    # Build query
     query = db.query(ScrapListing).options(
         joinedload(ScrapListing.seller_org),
         joinedload(ScrapListing.category)
     )
     
-    # Filter by status (default: ACTIVE)
     if status:
         query = query.filter(ScrapListing.availability_status == status)
     else:
         query = query.filter(ScrapListing.availability_status == ListingStatus.ACTIVE)
     
-    # Filter by category
     if category_id:
         try:
             query = query.filter(ScrapListing.category_id == uuid.UUID(category_id))
-            print(f"   ✅ Filtering by category: {category_id}")
+            print(f"   Filtering by category: {category_id}")
         except ValueError:
-            print(f"   ❌ Invalid category ID: {category_id}")
+            print(f"   Invalid category ID: {category_id}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid category ID format"
             )
     
-    # Filter by material name (partial match - case insensitive)
     if material_name:
         query = query.filter(ScrapListing.material_name.ilike(f"%{material_name}%"))
-        print(f"   ✅ Filtering by material: {material_name}")
+        print(f"   Filtering by material: {material_name}")
     
-    # Filter by price range
     if min_price is not None:
         query = query.filter(ScrapListing.asking_price >= min_price)
-        print(f"   ✅ Filtering by min price: {min_price}")
+        print(f"   Filtering by min price: {min_price}")
     if max_price is not None:
         query = query.filter(ScrapListing.asking_price <= max_price)
-        print(f"   ✅ Filtering by max price: {max_price}")
+        print(f"   Filtering by max price: {max_price}")
     
-    # Filter by quantity range
     if min_quantity is not None:
         query = query.filter(ScrapListing.quantity >= min_quantity)
     if max_quantity is not None:
         query = query.filter(ScrapListing.quantity <= max_quantity)
     
-    # Filter by unit
     if unit:
         query = query.filter(ScrapListing.unit == unit)
-        print(f"   ✅ Filtering by unit: {unit}")
+        print(f"   Filtering by unit: {unit}")
     
-    # Location-based filtering (simplified for now)
     if latitude and longitude:
-        print(f"   📍 Location filter: lat={latitude}, lon={longitude}, radius={radius_km}km")
+        print(f"   Location filter: lat={latitude}, lon={longitude}, radius={radius_km}km")
     
-    # Count total before pagination
     total = query.count()
-    print(f"   📊 Total matching listings: {total}")
+    print(f"   Total matching listings: {total}")
     
-    # Sorting
     if sort_by == "created_at":
         order_col = ScrapListing.created_at
     elif sort_by == "asking_price":
@@ -252,14 +244,12 @@ async def get_listings(
     else:
         query = query.order_by(desc(order_col))
     
-    # Pagination
     offset = (page - 1) * size
     query = query.offset(offset).limit(size)
     
     listings = query.all()
-    print(f"   ✅ Retrieved {len(listings)} listings for page {page}")
+    print(f"   Retrieved {len(listings)} listings for page {page}")
     
-    # Build response
     items = [build_listing_response(l) for l in listings]
     pages = (total + size - 1) // size if total > 0 else 0
     
@@ -280,24 +270,16 @@ async def get_my_listings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Get listings for the current user's organization(s)
     
-    Features:
-    - Requires authentication
-    - Returns all listings from organizations the user belongs to
-    - Supports pagination and status filtering
-    """
     
-    print(f"\n📋 Fetching my listings for user: {current_user.email}")
+    print(f"\n Fetching my listings for user: {current_user.email}")
     
-    # Get user's organizations
     org_memberships = db.query(OrganizationMember).filter(
         OrganizationMember.user_id == current_user.id
     ).all()
     
     if not org_memberships:
-        print(f"   ⚠️ User is not a member of any organization")
+        print(f"   User is not a member of any organization")
         return ListingListResponse(
             items=[],
             total=0,
@@ -307,31 +289,27 @@ async def get_my_listings(
         )
     
     org_ids = [m.organization_id for m in org_memberships]
-    print(f"   ✅ User belongs to {len(org_ids)} organization(s)")
+    print(f"   User belongs to {len(org_ids)} organization(s)")
     
-    # Build query
     query = db.query(ScrapListing).options(
         joinedload(ScrapListing.seller_org),
         joinedload(ScrapListing.category)
     ).filter(ScrapListing.seller_org_id.in_(org_ids))
     
-    # Filter by status if provided
     if status:
         query = query.filter(ScrapListing.availability_status == status)
-        print(f"   ✅ Filtering by status: {status.value}")
+        print(f"   Filtering by status: {status.value}")
     
-    # Count total
     total = query.count()
-    print(f"   📊 Total listings: {total}")
+    print(f"   Total listings: {total}")
     
-    # Pagination
     offset = (page - 1) * size
     listings = query.order_by(desc(ScrapListing.created_at)).offset(offset).limit(size).all()
     
     items = [build_listing_response(l) for l in listings]
     pages = (total + size - 1) // size if total > 0 else 0
     
-    print(f"   ✅ Retrieved {len(listings)} listings for page {page}")
+    print(f"   Retrieved {len(listings)} listings for page {page}")
     
     return ListingListResponse(
         items=items,
@@ -348,14 +326,9 @@ async def get_listing(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user)
 ):
-    """
-    Get a single listing by ID
+  
     
-    - Public for active listings
-    - Requires auth for inactive listings
-    """
-    
-    print(f"\n📋 Fetching listing: {listing_id}")
+    print(f"\n Fetching listing: {listing_id}")
     
     listing = db.query(ScrapListing).options(
         joinedload(ScrapListing.seller_org),
@@ -363,30 +336,29 @@ async def get_listing(
     ).filter(ScrapListing.id == uuid.UUID(listing_id)).first()
     
     if not listing:
-        print(f"❌ Listing not found: {listing_id}")
+        print(f" Listing not found: {listing_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Listing not found"
         )
     
-    print(f"✅ Listing found: {listing.material_name}")
+    print(f" Listing found: {listing.material_name}")
     
-    # Check access for inactive listings
     if listing.availability_status != ListingStatus.ACTIVE:
-        print(f"⚠️ Listing is {listing.availability_status.value}, checking access...")
+        print(f" Listing is {listing.availability_status.value}, checking access...")
         if not current_user:
-            print(f"❌ No user authenticated")
+            print(f" No user authenticated")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication required to view this listing"
             )
         if not check_listing_owner(listing, str(current_user.id), db):
-            print(f"❌ User is not owner")
+            print(f" User is not owner")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have access to this listing"
             )
-        print(f"✅ User is owner, access granted")
+        print(f" User is owner, access granted")
     
     return build_listing_response(listing)
 
@@ -398,13 +370,9 @@ async def update_listing(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Update a listing
     
-    - Only the seller can update their listing
-    """
     
-    print(f"\n✏️ Updating listing: {listing_id}")
+    print(f"\n Updating listing: {listing_id}")
     print(f"User: {current_user.email}")
     
     listing = db.query(ScrapListing).filter(
@@ -412,30 +380,27 @@ async def update_listing(
     ).first()
     
     if not listing:
-        print(f"❌ Listing not found: {listing_id}")
+        print(f" Listing not found: {listing_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Listing not found"
         )
     
-    print(f"✅ Listing found: {listing.material_name}")
+    print(f" Listing found: {listing.material_name}")
     
-    # Check ownership
     if not check_listing_owner(listing, str(current_user.id), db):
-        print(f"❌ User is not owner")
+        print(f" User is not owner")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to update this listing"
         )
     
-    print(f"✅ User is owner, updating...")
+    print(f" User is owner, updating...")
     
-    # Update fields
     try:
         update_data = listing_data.dict(exclude_unset=True)
-        print(f"📝 Updating fields: {list(update_data.keys())}")
+        print(f" Updating fields: {list(update_data.keys())}")
         
-        # Handle category_id specially
         if "category_id" in update_data and update_data["category_id"]:
             category = db.query(ScrapCategory).filter(
                 ScrapCategory.id == uuid.UUID(update_data["category_id"])
@@ -448,16 +413,14 @@ async def update_listing(
             listing.category_id = uuid.UUID(update_data["category_id"])
             del update_data["category_id"]
         
-        # Update other fields
         for field, value in update_data.items():
             if value is not None:
                 setattr(listing, field, value)
         
         db.commit()
         db.refresh(listing)
-        print(f"✅ Listing updated successfully")
+        print(f" Listing updated successfully")
         
-        # Reload with relationships
         listing = db.query(ScrapListing).options(
             joinedload(ScrapListing.seller_org),
             joinedload(ScrapListing.category)
@@ -467,7 +430,7 @@ async def update_listing(
         
     except Exception as e:
         db.rollback()
-        print(f"❌ Error updating listing: {str(e)}")
+        print(f" Error updating listing: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error updating listing: {str(e)}"
@@ -480,13 +443,9 @@ async def delete_listing(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Delete a listing (soft delete - sets status to CLOSED)
+   
     
-    - Only the seller can delete their listing
-    """
-    
-    print(f"\n🗑️ Deleting listing: {listing_id}")
+    print(f"\n Deleting listing: {listing_id}")
     print(f"User: {current_user.email}")
     
     listing = db.query(ScrapListing).filter(
@@ -494,26 +453,275 @@ async def delete_listing(
     ).first()
     
     if not listing:
-        print(f"❌ Listing not found: {listing_id}")
+        print(f" Listing not found: {listing_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Listing not found"
         )
     
-    print(f"✅ Listing found: {listing.material_name}")
+    print(f" Listing found: {listing.material_name}")
     
-    # Check ownership
     if not check_listing_owner(listing, str(current_user.id), db):
-        print(f"❌ User is not owner")
+        print(f" User is not owner")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to delete this listing"
         )
     
-    # Soft delete - set status to CLOSED
     listing.availability_status = ListingStatus.CLOSED
     db.commit()
     
-    print(f"✅ Listing closed successfully")
+    print(f" Listing closed successfully")
     
     return None
+
+
+@router.post("/{listing_id}/media", response_model=MediaUploadResponse, status_code=status.HTTP_201_CREATED)
+async def upload_listing_media(
+    listing_id: str,
+    file: UploadFile = File(...),
+    is_primary: bool = Form(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Upload an image for a listing
+    
+    - Requires authentication
+    - Only the listing owner can upload
+    - Accepts image files (JPEG, PNG, WebP)
+    - Max file size: 5MB
+    """
+    
+    print(f"\n Uploading media for listing: {listing_id}")
+    print(f"File: {file.filename}, Type: {file.content_type}")
+    
+    # 1. Get listing
+    listing = db.query(ScrapListing).filter(
+        ScrapListing.id == uuid.UUID(listing_id)
+    ).first()
+    
+    if not listing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Listing not found"
+        )
+    
+    # 2. Check ownership
+    if not check_listing_owner(listing, str(current_user.id), db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to upload media for this listing"
+        )
+    
+    # 3. Validate file type
+    allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type. Allowed: {', '.join(allowed_types)}"
+        )
+    
+    # 4. Validate file size (max 5MB)
+    file_content = await file.read()
+    if len(file_content) > 5 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File too large. Maximum size is 5MB"
+        )
+    
+    # 5. Upload to Cloudinary
+    upload_result = upload_image(file_content, folder="scraplink/listings")
+    
+    if not upload_result:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload image to Cloudinary"
+        )
+    
+    print(f" Uploaded to Cloudinary: {upload_result['url']}")
+    
+    # 6. If this is primary, unset other primary images
+    if is_primary:
+        db.query(ListingMedia).filter(
+            ListingMedia.listing_id == listing.id,
+            ListingMedia.is_primary == True
+        ).update({"is_primary": False})
+    
+    media = ListingMedia(
+        id=uuid.uuid4(),
+        listing_id=listing.id,
+        uploaded_by=current_user.id,
+        file_type=file.content_type,
+        file_url=upload_result["url"],
+        public_id=upload_result["public_id"],
+        is_primary=is_primary
+    )
+    
+    db.add(media)
+    db.commit()
+    db.refresh(media)
+    
+    print(f" Media record created: {media.id}")
+    
+    return MediaUploadResponse(
+        message=" Image uploaded successfully",
+        media=MediaResponse(
+            id=str(media.id),
+            listing_id=str(media.listing_id),
+            file_type=media.file_type,
+            file_url=media.file_url,
+            public_id=media.public_id,
+            is_primary=media.is_primary,
+            created_at=media.created_at.isoformat() if media.created_at else None
+        )
+    )
+
+
+@router.get("/{listing_id}/media", response_model=MediaListResponse)
+async def get_listing_media(
+    listing_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get all media for a listing
+    
+    - Public endpoint
+    """
+    
+    listing = db.query(ScrapListing).filter(
+        ScrapListing.id == uuid.UUID(listing_id)
+    ).first()
+    
+    if not listing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Listing not found"
+        )
+    
+    media_list = db.query(ListingMedia).filter(
+        ListingMedia.listing_id == listing.id
+    ).order_by(
+        ListingMedia.is_primary.desc(),
+        ListingMedia.created_at.asc()
+    ).all()
+    
+    return MediaListResponse(
+        media=[
+            MediaResponse(
+                id=str(m.id),
+                listing_id=str(m.listing_id),
+                file_type=m.file_type,
+                file_url=m.file_url,
+                public_id=m.public_id,
+                is_primary=m.is_primary,
+                created_at=m.created_at.isoformat() if m.created_at else None
+            )
+            for m in media_list
+        ],
+        total=len(media_list)
+    )
+
+
+@router.delete("/{listing_id}/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_listing_media(
+    listing_id: str,
+    media_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete a media item from a listing
+    
+    - Requires authentication
+    - Only the listing owner can delete
+    """
+    
+    print(f"\n Deleting media: {media_id} from listing: {listing_id}")
+    
+    # 1. Get listing
+    listing = db.query(ScrapListing).filter(
+        ScrapListing.id == uuid.UUID(listing_id)
+    ).first()
+    
+    if not listing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Listing not found"
+        )
+    
+    if not check_listing_owner(listing, str(current_user.id), db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to delete media from this listing"
+        )
+    
+    media = db.query(ListingMedia).filter(
+        ListingMedia.id == uuid.UUID(media_id),
+        ListingMedia.listing_id == listing.id
+    ).first()
+    
+    if not media:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Media not found"
+        )
+    
+    if media.public_id:
+        delete_image(media.public_id)
+        print(f" Deleted from Cloudinary: {media.public_id}")
+    
+    db.delete(media)
+    db.commit()
+    
+    print(f" Media record deleted")
+    
+    return None
+
+
+@router.put("/{listing_id}/media/{media_id}/primary")
+async def set_primary_media(
+    listing_id: str,
+    media_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set a media item as the primary image for a listing
+    """
+    
+    listing = db.query(ScrapListing).filter(
+        ScrapListing.id == uuid.UUID(listing_id)
+    ).first()
+    
+    if not listing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Listing not found"
+        )
+    
+    if not check_listing_owner(listing, str(current_user.id), db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to modify this listing"
+        )
+    
+    media = db.query(ListingMedia).filter(
+        ListingMedia.id == uuid.UUID(media_id),
+        ListingMedia.listing_id == listing.id
+    ).first()
+    
+    if not media:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Media not found"
+        )
+    
+    db.query(ListingMedia).filter(
+        ListingMedia.listing_id == listing.id
+    ).update({"is_primary": False})
+    
+    media.is_primary = True
+    db.commit()
+    
+    return {"message": "Primary image updated"}

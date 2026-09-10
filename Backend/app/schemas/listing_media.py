@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional,List
 from datetime import datetime
 
 
@@ -16,8 +16,22 @@ class MediaResponse(BaseModel):
     listing_id: str
     file_type: str
     file_url: str
+    public_id: Optional[str]
     is_primary: bool
     created_at: str
     
     class Config:
         from_attributes = True
+
+class MediaUploadResponse(BaseModel):
+    message: str
+    media: MediaResponse
+
+
+class MediaListResponse(BaseModel):
+    media: List[MediaResponse]
+    total: int
+
+
+class SetPrimaryMedia(BaseModel):
+    media_id: str
