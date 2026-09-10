@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: Optional[str] = None
     TWILIO_VERIFY_SERVICE_SID: Optional[str] = None
     TWILIO_PHONE_NUMBER: Optional[str] = None
+
+    # ✅ Cloudinary
+    CLOUDINARY_CLOUD_NAME: Optional[str] = None
+    CLOUDINARY_API_KEY: Optional[str] = None
+    CLOUDINARY_API_SECRET: Optional[str] = None
     
     # ML/Data
     COMMODITY_DATA_PATH: str = "./data/commodity_data.csv"

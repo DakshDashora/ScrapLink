@@ -19,8 +19,6 @@ async def create_organization(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a new organization"""
-    # Check if organization name already exists
     existing = db.query(Organization).filter(
         Organization.name == org_data.name
     ).first()
@@ -30,7 +28,6 @@ async def create_organization(
             detail="Organization with this name already exists"
         )
     
-    # Create organization
     organization = Organization(
         id=uuid.uuid4(),
         name=org_data.name,
@@ -44,9 +41,8 @@ async def create_organization(
     )
     
     db.add(organization)
-    db.flush()  # Get organization ID
+    db.flush()  
     
-    # Add current user as owner member
     member = OrganizationMember(
         id=uuid.uuid4(),
         organization_id=organization.id,
@@ -125,19 +121,16 @@ async def update_organization(
             detail="Organization not found"
         )
     
-    # Check if user is owner
     if organization.owner_user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only organization owner can update details"
         )
     
-    # Update fields
     for field, value in org_data.dict(exclude_unset=True).items():
         if value is not None:
             setattr(organization, field, value)
     
-    # Update GSTIN status if GSTIN changed
     if org_data.gstin is not None:
         organization.gstin_status = (
             VerificationStatus.PENDING if org_data.gstin 
