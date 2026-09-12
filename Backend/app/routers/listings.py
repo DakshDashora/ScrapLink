@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, asc
 from typing import Optional
 import uuid
-
+import math
 from app.database import get_db
 from app.models.user import User
 from app.models.scrap_listing import ScrapListing, ListingStatus, ListingUnit
@@ -318,6 +318,225 @@ async def get_my_listings(
         size=size,
         pages=pages
     )
+
+
+
+@router.get("/map")
+async def get_listings_for_map(
+    category_id: Optional[str] = Query(None, description="Filter by category ID"),
+    material_name: Optional[str] = Query(None, description="Filter by material name"),
+    status: Optional[ListingStatus] = Query(ListingStatus.ACTIVE, description="Listing status"),
+    limit: int = Query(500, ge=1, le=2000, description="Maximum markers to return"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get listings with location data for Leaflet map display
+    
+    Features:
+    - Public endpoint (no authentication required)
+    - Returns only listings that have valid coordinates
+    - Lightweight response optimized for map markers
+    - Limits results to prevent performance issues
+    
+    Returns an array of markers with:
+    - id, material_name, category, quantity, unit
+    - asking_price, availability_status
+    - latitude, longitude, city, state
+    - primary_image_url (first image)
+    """
+    
+    print(f"\n Fetching listings for map...")
+    print(f"   Filters: category={category_id}, material={material_name}")
+    print(f"   Limit: {limit}")
+    
+    query = db.query(ScrapListing).options(
+        joinedload(ScrapListing.category),
+        joinedload(ScrapListing.media)
+    )
+    
+    if status:
+        query = query.filter(ScrapListing.availability_status == status)
+    else:
+        query = query.filter(ScrapListing.availability_status == ListingStatus.ACTIVE)
+    
+    if category_id:
+        try:
+            query = query.filter(ScrapListing.category_id == uuid.UUID(category_id))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid category ID format"
+            )
+    
+    if material_name:
+        query = query.filter(ScrapListing.material_name.ilike(f"%{material_name}%"))
+    
+    query = query.filter(ScrapListing.location.isnot(None))
+    
+    listings = query.limit(limit).all()
+    
+    print(f" Found {len(listings)} listings with locations")
+    
+    markers = []
+    for listing in listings:
+        location = listing.location or {}
+        lat = location.get("latitude")
+        lng = location.get("longitude")
+        
+        if lat is None or lng is None:
+            continue
+        
+        primary_image = None
+        if listing.media:
+            for m in listing.media:
+                if m.is_primary:
+                    primary_image = m.file_url
+                    break
+            if not primary_image:
+                primary_image = listing.media[0].file_url
+        
+        markers.append({
+            "id": str(listing.id),
+            "material_name": listing.material_name,
+            "category_name": listing.category.name if listing.category else "Unknown",
+            "quantity": str(listing.quantity),
+            "unit": listing.unit.value,
+            "asking_price": str(listing.asking_price) if listing.asking_price else None,
+            "availability_status": listing.availability_status.value,
+            "latitude": lat,
+            "longitude": lng,
+            "city": location.get("city"),
+            "state": location.get("state"),
+            "address": location.get("address"),
+            "primary_image_url": primary_image
+        })
+    
+    print(f"  Returning {len(markers)} markers with valid coordinates")
+    
+    return {
+        "markers": markers,
+        "total": len(markers)
+    }
+
+
+@router.get("/map/nearby")
+async def get_nearby_listings(
+    latitude: float = Query(..., description="Center latitude"),
+    longitude: float = Query(..., description="Center longitude"),
+    radius_km: float = Query(50.0, ge=1, le=500, description="Search radius in km"),
+    category_id: Optional[str] = Query(None, description="Filter by category ID"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum results"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get listings near a specific location
+    
+    Features:
+    - Public endpoint
+    - Uses Haversine formula for distance calculation
+    - Returns listings sorted by distance (nearest first)
+    - Requires latitude and longitude
+    
+    Note: For production use PostGIS for better performance.
+    This implementation calculates distance in Python.
+    """
+    
+    print(f"\n Finding nearby listings...")
+    print(f"   Center: ({latitude}, {longitude}), Radius: {radius_km}km")
+    
+    query = db.query(ScrapListing).options(
+        joinedload(ScrapListing.category),
+        joinedload(ScrapListing.media)
+    ).filter(
+        ScrapListing.availability_status == ListingStatus.ACTIVE,
+        ScrapListing.location.isnot(None)
+    )
+    
+    if category_id:
+        try:
+            query = query.filter(ScrapListing.category_id == uuid.UUID(category_id))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid category ID format"
+            )
+    
+    listings = query.all()
+    print(f"  Total listings to check: {len(listings)}")
+    
+    nearby = []
+    for listing in listings:
+        location = listing.location or {}
+        lat = location.get("latitude")
+        lng = location.get("longitude")
+        
+        if lat is None or lng is None:
+            continue
+        
+        distance = haversine_distance(latitude, longitude, lat, lng)
+        
+        if distance <= radius_km:
+            primary_image = None
+            if listing.media:
+                for m in listing.media:
+                    if m.is_primary:
+                        primary_image = m.file_url
+                        break
+                if not primary_image:
+                    primary_image = listing.media[0].file_url
+            
+            nearby.append({
+                "id": str(listing.id),
+                "material_name": listing.material_name,
+                "category_name": listing.category.name if listing.category else "Unknown",
+                "quantity": str(listing.quantity),
+                "unit": listing.unit.value,
+                "asking_price": str(listing.asking_price) if listing.asking_price else None,
+                "availability_status": listing.availability_status.value,
+                "latitude": lat,
+                "longitude": lng,
+                "city": location.get("city"),
+                "state": location.get("state"),
+                "distance_km": round(distance, 2),
+                "primary_image_url": primary_image
+            })
+    
+    nearby.sort(key=lambda x: x["distance_km"])
+    
+    nearby = nearby[:limit]
+    
+    print(f" Found {len(nearby)} listings within {radius_km}km")
+    
+    return {
+        "center": {"latitude": latitude, "longitude": longitude},
+        "radius_km": radius_km,
+        "listings": nearby,
+        "total": len(nearby)
+    }
+
+
+# HAVERSINE DISTANCE HELPER
+
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """
+    Calculate distance between two points on Earth using Haversine formula
+    
+    Returns distance in kilometers
+    """
+    R = 6371  
+    
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lon = math.radians(lon2 - lon1)
+    
+    a = (math.sin(delta_lat / 2) ** 2 +
+         math.cos(lat1_rad) * math.cos(lat2_rad) *
+         math.sin(delta_lon / 2) ** 2)
+    
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    
+    return R * c
 
 
 @router.get("/{listing_id}", response_model=ListingResponse)
