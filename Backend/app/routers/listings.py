@@ -944,3 +944,77 @@ async def set_primary_media(
     db.commit()
     
     return {"message": "Primary image updated"}
+
+
+
+
+@router.get("/stats/summary")
+async def get_listing_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get listing statistics for the current user's organization
+    
+    - Requires authentication
+    - Returns counts, total value, and category breakdown
+    """
+    from sqlalchemy import func
+    
+    print(f"\n Fetching stats for user: {current_user.email}")
+    
+    # Get user's organizations
+    org_memberships = db.query(OrganizationMember).filter(
+        OrganizationMember.user_id == current_user.id
+    ).all()
+    
+    if not org_memberships:
+        return {
+            "total_listings": 0,
+            "active_listings": 0,
+            "sold_listings": 0,
+            "closed_listings": 0,
+            "total_value": "0.00",
+            "by_category": []
+        }
+    
+    org_ids = [m.organization_id for m in org_memberships]
+    
+    all_listings = db.query(ScrapListing).filter(
+        ScrapListing.seller_org_id.in_(org_ids)
+    ).all()
+    
+    total_listings = len(all_listings)
+    active_listings = sum(1 for l in all_listings if l.availability_status == ListingStatus.ACTIVE)
+    sold_listings = sum(1 for l in all_listings if l.availability_status == ListingStatus.SOLD)
+    closed_listings = sum(1 for l in all_listings if l.availability_status == ListingStatus.CLOSED)
+    
+    total_value = sum(
+        float(l.asking_price) * float(l.quantity) if l.asking_price else 0
+        for l in all_listings if l.availability_status == ListingStatus.ACTIVE
+    )
+    
+    # Category breakdown
+    category_stats = {}
+    for listing in all_listings:
+        if listing.category:
+            cat_name = listing.category.name
+            if cat_name not in category_stats:
+                category_stats[cat_name] = 0
+            category_stats[cat_name] += 1
+    
+    by_category = [
+        {"category": name, "count": count}
+        for name, count in sorted(category_stats.items(), key=lambda x: x[1], reverse=True)
+    ]
+    
+    print(f"   Total: {total_listings}, Active: {active_listings}")
+    
+    return {
+        "total_listings": total_listings,
+        "active_listings": active_listings,
+        "sold_listings": sold_listings,
+        "closed_listings": closed_listings,
+        "total_value": f"{total_value:.2f}",
+        "by_category": by_category
+    }
