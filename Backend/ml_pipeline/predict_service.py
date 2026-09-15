@@ -1,173 +1,158 @@
-"""
-ScrapLink — ML Prediction Service Interface
-============================================
-Interface module for backend API developers to import and call model predictions.
+"""Prediction interface for active ScrapMonster quantile artifacts.
 
-Usage by Backend Developer in FastAPI router:
-    from ml_pipeline.predict_service import get_price_prediction
-
-    result = get_price_prediction(commodity="Copper", lag_1=645.0)
+The service never retrains and never turns MCX activity into a price.  Legacy
+arguments remain accepted so existing API callers can migrate gradually.
 """
 
-import os
-import sys
+from __future__ import annotations
+
 import json
+from pathlib import Path
+from typing import Any
+
 import joblib
 import numpy as np
 import pandas as pd
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(SCRIPT_DIR, "models")
-PROCESSED_DIR = os.path.join(SCRIPT_DIR, "data", "processed")
-FEATURE_CSV = os.path.join(PROCESSED_DIR, "engineered_commodity_features.csv")
+from .etl.pipeline_config import (
+    ACTIVE_MODEL_POINTER, FEATURES_DIR, SCRAP_CANONICAL_PATH,
+)
+from .etl.trainable import FEATURE_COLUMNS, build_trainable_dataset
 
-# In-memory cache for fast sub-20ms inference
-_MODEL_CACHE = {}
-
-
-def load_model_artifacts(models_dir: str = None):
-    """Loads and caches XGBoost model artifacts in memory if available."""
-    global _MODEL_CACHE
-    if _MODEL_CACHE:
-        return _MODEL_CACHE
-
-    target_dir = models_dir or MODELS_DIR
-
-    logret_path  = os.path.join(target_dir, "xgboost_per_commodity_logreturn.pkl")
-    xgb_path     = os.path.join(target_dir, "xgboost_price_model.pkl")
-    encoder_path = os.path.join(target_dir, "label_encoder.pkl")
-
-    if os.path.exists(logret_path):
-        _MODEL_CACHE["type"] = "logreturn"
-        _MODEL_CACHE["models"] = joblib.load(logret_path)
-    elif os.path.exists(xgb_path) and os.path.exists(encoder_path):
-        _MODEL_CACHE["type"] = "single"
-        _MODEL_CACHE["model"] = joblib.load(xgb_path)
-        _MODEL_CACHE["encoder"] = joblib.load(encoder_path)
-    else:
-        _MODEL_CACHE["type"] = "none"
-
-    return _MODEL_CACHE
+_MODEL_CACHE: dict[str, Any] = {}
 
 
-def _get_commodity_defaults(commodity: str) -> dict:
-    """Loads latest known feature values for a commodity from dataset if missing."""
-    if os.path.exists(FEATURE_CSV):
-        try:
-            df = pd.read_csv(FEATURE_CSV)
-            sub = df[df["commodity"].str.lower() == commodity.lower()].sort_values("date")
-            if not sub.empty:
-                last = sub.iloc[-1]
-                return {
-                    "lag_1": float(last.get("lag_1", last["spot_price_inr_kg"])),
-                    "lag_7": float(last.get("lag_7", last["spot_price_inr_kg"])),
-                    "lag_14": float(last.get("lag_14", last["spot_price_inr_kg"])),
-                    "lag_30": float(last.get("lag_30", last["spot_price_inr_kg"])),
-                    "rolling_mean_7": float(last.get("rolling_mean_7", last["spot_price_inr_kg"])),
-                    "rolling_mean_30": float(last.get("rolling_mean_30", last["spot_price_inr_kg"])),
-                    "rolling_std_7": float(last.get("rolling_std_7", 5.0)),
-                    "rolling_std_30": float(last.get("rolling_std_30", 15.0)),
-                    "pct_change_7": float(last.get("pct_change_7", 0.0)),
-                    "pct_change_30": float(last.get("pct_change_30", 0.0)),
-                }
-        except Exception:
-            pass
+def _latest_observation(commodity: str) -> dict[str, Any] | None:
+    if not SCRAP_CANONICAL_PATH.exists():
+        return None
+    data = pd.read_csv(SCRAP_CANONICAL_PATH)
+    data = data[data["material"].astype(str).str.casefold() == commodity.casefold()]
+    if data.empty:
+        return None
+    row = data.sort_values("observation_date").iloc[-1]
+    return {"price": float(row["price_inr_per_kg"]), "date": str(row["observation_date"])}
 
-    return {
-        "lag_1": 200.0, "lag_7": 200.0, "lag_14": 200.0, "lag_30": 200.0,
-        "rolling_mean_7": 200.0, "rolling_mean_30": 200.0,
-        "rolling_std_7": 5.0, "rolling_std_30": 15.0,
-        "pct_change_7": 0.0, "pct_change_30": 0.0,
+
+def _load_active() -> dict[str, Any] | None:
+    if not ACTIVE_MODEL_POINTER.exists():
+        return None
+    pointer = json.loads(ACTIVE_MODEL_POINTER.read_text(encoding="utf-8"))
+    directory = Path(pointer["path"])
+    if pointer.get("version") in _MODEL_CACHE:
+        return _MODEL_CACHE[pointer["version"]]
+    models = {}
+    for quantile in (10, 50, 90):
+        path = directory / f"model_p{quantile}.joblib"
+        if not path.exists():
+            raise FileNotFoundError(f"Active model is missing {path.name}")
+        models[quantile] = joblib.load(path)
+    schema_path = directory / "feature_schema.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8")) if schema_path.exists() else {}
+    loaded = {"version": pointer["version"], "models": models, "features": schema.get("feature_names", FEATURE_COLUMNS)}
+    _MODEL_CACHE[pointer["version"]] = loaded
+    return loaded
+
+
+def _legacy_features(
+    commodity: str,
+    lag_1: float | None,
+    lag_7: float | None,
+    lag_14: float | None,
+    lag_30: float | None,
+    rolling_mean_7: float | None,
+    rolling_mean_30: float | None,
+    rolling_std_7: float | None,
+    rolling_std_30: float | None,
+    pct_change_7: float | None,
+    pct_change_30: float | None,
+) -> tuple[dict[str, float], str | None]:
+    latest = _latest_observation(commodity)
+    if latest is None and lag_1 is None:
+        raise ValueError(
+            f"No observed ScrapMonster price is available for {commodity!r}; "
+            "collect a snapshot or supply an observed lag_1 value."
+        )
+    base = latest["price"] if latest else float(lag_1)
+    values = {
+        "scrap_price_lag_1": lag_1 if lag_1 is not None else base,
+        "scrap_price_lag_7": lag_7 if lag_7 is not None else base,
+        "scrap_price_lag_14": lag_14 if lag_14 is not None else base,
+        "scrap_price_lag_30": lag_30 if lag_30 is not None else base,
+        "scrap_price_ma_7": rolling_mean_7 if rolling_mean_7 is not None else base,
+        "scrap_price_ma_30": rolling_mean_30 if rolling_mean_30 is not None else base,
+        "scrap_price_volatility_7": rolling_std_7 if rolling_std_7 is not None else 0.0,
+        "scrap_price_volatility_30": rolling_std_30 if rolling_std_30 is not None else 0.0,
+        "scrap_price_return_7": pct_change_7 if pct_change_7 is not None else 0.0,
+        "scrap_price_return_30": pct_change_30 if pct_change_30 is not None else 0.0,
+        "scrap_price_return_1": 0.0,
+        "day_of_week": 0.0, "month": 1.0, "quarter": 1.0,
+        "has_scrap_history": 1.0, "has_mcx_history": 0.0,
     }
+    return values, latest["date"] if latest else None
 
 
 def get_price_prediction(
     commodity: str,
-    lag_1: float = None,
-    lag_7: float = None,
-    lag_14: float = None,
-    lag_30: float = None,
-    rolling_mean_7: float = None,
-    rolling_mean_30: float = None,
-    rolling_std_7: float = None,
-    rolling_std_30: float = None,
-    pct_change_7: float = None,
-    pct_change_30: float = None,
-    models_dir: str = None,
+    lag_1: float | None = None,
+    lag_7: float | None = None,
+    lag_14: float | None = None,
+    lag_30: float | None = None,
+    rolling_mean_7: float | None = None,
+    rolling_mean_30: float | None = None,
+    rolling_std_7: float | None = None,
+    rolling_std_30: float | None = None,
+    pct_change_7: float | None = None,
+    pct_change_30: float | None = None,
+    models_dir: str | None = None,
     confidence_rmse: float = 15.0,
-) -> dict:
-    """
-    Main interface function for Backend API routes.
-    Returns structured price recommendation dictionary.
-    """
-    cache = load_model_artifacts(models_dir)
-    defaults = _get_commodity_defaults(commodity)
-
-    v_lag1   = lag_1 if lag_1 is not None else defaults["lag_1"]
-    v_lag7   = lag_7 if lag_7 is not None else defaults["lag_7"]
-    v_lag14  = lag_14 if lag_14 is not None else defaults["lag_14"]
-    v_lag30  = lag_30 if lag_30 is not None else defaults["lag_30"]
-    v_rm7    = rolling_mean_7 if rolling_mean_7 is not None else defaults["rolling_mean_7"]
-    v_rm30   = rolling_mean_30 if rolling_mean_30 is not None else defaults["rolling_mean_30"]
-    v_rstd7  = rolling_std_7 if rolling_std_7 is not None else defaults["rolling_std_7"]
-    v_rstd30 = rolling_std_30 if rolling_std_30 is not None else defaults["rolling_std_30"]
-    v_pct7   = pct_change_7 if pct_change_7 is not None else defaults["pct_change_7"]
-    v_pct30  = pct_change_30 if pct_change_30 is not None else defaults["pct_change_30"]
-
-    if cache["type"] == "logreturn":
-        models = cache["models"]
-        matched_key = None
-        for k in models.keys():
-            if k.lower() == commodity.lower():
-                matched_key = k
-                break
-
-        if matched_key:
-            m = models[matched_key]
-            feats = np.array([[v_lag1, v_lag7, v_lag14, v_lag30, v_rm7, v_rm30, v_rstd7, v_rstd30, v_pct7, v_pct30]])
-            log_ret = float(m.predict(feats)[0])
-            pred_price = round(v_lag1 * np.exp(log_ret), 2)
-        else:
-            pred_price = round(v_lag1, 2)
-    elif cache["type"] == "single":
-        model = cache["model"]
-        encoder = cache["encoder"]
+) -> dict[str, Any]:
+    """Return ordered P10/P50/P90 estimates plus the legacy response fields."""
+    feature_values, prediction_date = _legacy_features(
+        commodity, lag_1, lag_7, lag_14, lag_30, rolling_mean_7,
+        rolling_mean_30, rolling_std_7, rolling_std_30, pct_change_7, pct_change_30,
+    )
+    active = _load_active()
+    if active:
         try:
-            comm_enc = encoder.transform([commodity])[0]
-        except ValueError:
-            comm_enc = int(np.mean(encoder.transform(encoder.classes_)))
-
-        feats = np.array([[comm_enc, v_lag1, v_lag7, v_lag14, v_lag30, v_rm7, v_rm30, v_rstd7, v_rstd30, v_pct7, v_pct30]])
-        pred_price = round(float(model.predict(feats)[0]), 2)
+            trainable = build_trainable_dataset()["dataset"]
+            rows = trainable[trainable["material"].astype(str).str.casefold() == commodity.casefold()]
+            if not rows.empty:
+                feature_values.update(rows.sort_values("observation_date").iloc[-1].to_dict())
+        except (FileNotFoundError, ValueError):
+            pass
+        vector = pd.DataFrame([{name: feature_values.get(name, np.nan) for name in active["features"]}])
+        raw = [float(active["models"][quantile].predict(vector)[0]) for quantile in (10, 50, 90)]
+        estimates = np.sort(np.asarray(raw, dtype=float))
+        model_version = active["version"]
     else:
-        # Fallback if model artifacts are not yet generated
-        pred_price = round(v_lag1, 2)
-
-    lower_band = round(max(pred_price - (1.96 * confidence_rmse), 0.0), 2)
-    upper_band = round(pred_price + (1.96 * confidence_rmse), 2)
-
-    if pred_price > v_rm7 * 1.01:
-        trend = "UPWARD"
-    elif pred_price < v_rm7 * 0.99:
-        trend = "DOWNWARD"
-    else:
-        trend = "STABLE"
-
+        # No model is promoted until historical coverage exists. This
+        # compatibility fallback reports the latest observed target, not a
+        # fabricated interval or MCX-derived price.
+        observed = float(feature_values["scrap_price_lag_1"])
+        estimates = np.array([observed, observed, observed], dtype=float)
+        model_version = "no_active_model"
+    if not np.isfinite(estimates).all() or (estimates < 0).any():
+        raise ValueError("Model returned non-finite or negative price estimates")
+    p10, p50, p90 = [round(float(value), 2) for value in estimates]
+    trend_base = float(feature_values["scrap_price_ma_7"])
+    trend = "UPWARD" if p50 > trend_base * 1.01 else "DOWNWARD" if p50 < trend_base * 0.99 else "STABLE"
     return {
         "status": "success",
         "commodity": commodity,
-        "recommended_price": pred_price,
-        "price_band": {"lower": lower_band, "upper": upper_band},
+        "estimated_price_p10_inr_per_kg": p10,
+        "estimated_price_p50_inr_per_kg": p50,
+        "estimated_price_p90_inr_per_kg": p90,
+        "model_version": model_version,
+        "prediction_date": prediction_date,
+        "estimate_type": "scrap_market_reference",
+        "is_guaranteed_transaction_price": False,
+        # Existing API compatibility:
+        "recommended_price": p50,
+        "price_band": {"lower": p10, "upper": p90},
         "trend": trend,
         "unit": "INR/kg",
         "disclaimer": (
-            "This is an AI-estimated reference price based on historical market benchmarks. "
-            "It is not a guaranteed transaction price. Actual scrap prices depend on "
-            "grade, condition, local demand, and negotiation."
+            "This is an AI-estimated reference price based on observed "
+            "ScrapMonster prices. It is not a guaranteed transaction price."
         ),
     }
-
-
-if __name__ == "__main__":
-    res = get_price_prediction("Copper")
-    print(json.dumps(res, indent=2))

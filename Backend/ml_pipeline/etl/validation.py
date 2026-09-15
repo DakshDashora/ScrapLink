@@ -46,6 +46,10 @@ def validate_canonical_data(scrap: pd.DataFrame, mcx: pd.DataFrame) -> dict[str,
             )
         if bool(scrap["is_synthetic"].fillna(False).any()):
             errors.append("Synthetic observations are present in the canonical scrap dataset")
+        if pd.to_numeric(scrap["price_inr_per_kg"], errors="coerce").isin([float("inf"), float("-inf")]).any():
+            errors.append("Scrap dataset contains infinite prices")
+        if scrap["source_hash"].astype(str).str.len().lt(16).any():
+            warnings.append("Some ScrapMonster rows have unusually short source hashes")
         duplicates = scrap.duplicated(
             ["observation_date", "material", "scrap_type", "source"]
         ).sum()
@@ -131,4 +135,36 @@ def leakage_audit(
             "future_target_in_features": False,
             "synthetic_rows_present": False,
         },
+    }
+
+
+def chronological_split(
+    data: pd.DataFrame,
+    date_column: str = "observation_date",
+    train_fraction: float = 0.70,
+    validation_fraction: float = 0.15,
+) -> dict[str, pd.DataFrame]:
+    """Split whole dates chronologically; no date can occur in two partitions."""
+    if not 0 < train_fraction < 1 or not 0 <= validation_fraction < 1:
+        raise ValueError("Split fractions must be between zero and one")
+    if train_fraction + validation_fraction >= 1:
+        raise ValueError("Train and validation fractions must leave a test set")
+    if date_column not in data:
+        raise ValueError(f"Missing split date column: {date_column}")
+    frame = data.copy()
+    frame[date_column] = pd.to_datetime(frame[date_column], errors="coerce")
+    frame = frame.dropna(subset=[date_column]).sort_values(date_column)
+    dates = sorted(frame[date_column].dt.normalize().unique())
+    if len(dates) < 3:
+        raise ValueError("At least three distinct dates are required for chronological splitting")
+    train_end = max(1, int(len(dates) * train_fraction))
+    validation_end = max(train_end + 1, int(len(dates) * (train_fraction + validation_fraction)))
+    validation_end = min(validation_end, len(dates) - 1)
+    train_dates = set(dates[:train_end])
+    validation_dates = set(dates[train_end:validation_end])
+    test_dates = set(dates[validation_end:])
+    return {
+        "train": frame[frame[date_column].dt.normalize().isin(train_dates)].copy(),
+        "validation": frame[frame[date_column].dt.normalize().isin(validation_dates)].copy(),
+        "test": frame[frame[date_column].dt.normalize().isin(test_dates)].copy(),
     }

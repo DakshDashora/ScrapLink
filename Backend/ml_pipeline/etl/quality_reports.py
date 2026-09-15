@@ -11,7 +11,19 @@ import pandas as pd
 
 def _write(report_dir: Path, name: str, payload: dict[str, Any]) -> None:
     report_dir.mkdir(parents=True, exist_ok=True)
-    (report_dir / name).write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    def serializable(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {str(key): serializable(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [serializable(item) for item in value]
+        if hasattr(value, "item"):
+            return serializable(value.item())
+        return value
+
+    (report_dir / name).write_text(
+        json.dumps(serializable(payload), indent=2, default=str),
+        encoding="utf-8",
+    )
 
 
 def build_quality_reports(
@@ -81,6 +93,23 @@ def build_quality_reports(
             ),
         },
     }
+    scrap_dates_set = set(scrap_dates.dropna().dt.date)
+    mcx_dates_set = set(mcx_dates.dropna().dt.date)
+    source_coverage = {
+        "scrapmonster": {
+            "collection_dates": sorted(str(value) for value in scrap_dates_set),
+            "rows_per_collection_date": (
+                scrap.groupby(scrap_dates.dt.date).size().to_dict() if not scrap.empty else {}
+            ),
+            "rows_per_material": scrap.groupby("material").size().to_dict() if not scrap.empty else {},
+        },
+        "mcx": {"date_count": len(mcx_dates_set)},
+        "scrap_mcx_date_overlap": len(scrap_dates_set & mcx_dates_set),
+        "scrap_mcx_material_overlap": sorted(
+            set(scrap.get("material", pd.Series(dtype="string")).dropna().astype(str))
+            & set(mcx.get("commodity", pd.Series(dtype="string")).dropna().astype(str))
+        ),
+    }
     distributions = {
         "scrap_price_inr_per_kg": (
             scrap["price_inr_per_kg"].describe(
@@ -107,9 +136,19 @@ def build_quality_reports(
             "reference_exact": quality["reference_exact_duplicates"],
         },
         "distribution_summary.json": distributions,
+        "source_coverage.json": source_coverage,
     }
     for name, payload in reports.items():
         _write(report_dir, name, payload)
+    eligibility = {
+        "raw_rows": int(len(scrap)),
+        "valid_target_rows": int(
+            pd.to_numeric(scrap.get("price_inr_per_kg", pd.Series(dtype=float)), errors="coerce").gt(0).sum()
+        ),
+        "collection_dates": int(scrap_dates.dropna().dt.date.nunique()),
+        "note": "Detailed prior-history eligibility is written by build_trainable_dataset.",
+    }
+    _write(report_dir, "training_eligibility.json", eligibility)
 
     markdown = [
         "# ScrapLink canonical data quality report",
@@ -128,5 +167,6 @@ def build_quality_reports(
     ]
     (report_dir / "EDA.md").write_text("\n".join(markdown) + "\n", encoding="utf-8")
     return {name: str(report_dir / name) for name in reports} | {
+        "training_eligibility.json": str(report_dir / "training_eligibility.json"),
         "EDA.md": str(report_dir / "EDA.md")
     }
