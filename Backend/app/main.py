@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import init_db
-from app.routers import auth_router, otp_router, org_router, listings_router  
+from app.routers import auth_router, otp_router, org_router, listings_router 
+from app.routers.categories import router as categories_router 
 from app.config import settings
 from app.utils.cloudinary_service import init_cloudinary  
 
@@ -27,7 +28,7 @@ app.include_router(auth_router)
 app.include_router(otp_router)
 app.include_router(org_router)
 app.include_router(listings_router) 
-
+app.include_router(categories_router)
 
 @app.on_event("startup")
 async def startup_event():
