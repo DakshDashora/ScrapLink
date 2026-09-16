@@ -8,6 +8,7 @@ across ETL modules.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,10 @@ from dotenv import load_dotenv
 ML_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = ML_DIR.parent
 load_dotenv(BACKEND_DIR / ".env", override=False)
+
+
+ML_JOB_TOKEN = os.getenv("ML_JOB_TOKEN", "").strip()
+ML_DATABASE_URL = os.getenv("ML_DATABASE_URL", "").strip()
 
 def _configured_tickers() -> dict[str, str]:
     """Return the fixed public Yahoo ticker mapping used by the pipeline."""
