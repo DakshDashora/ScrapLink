@@ -1,14 +1,14 @@
 """Canonical, reproducible data-pipeline entry point.
 
 Run from the Backend directory with:
-    python -m ml_pipeline.run_pipeline
+    python -m ml_pipeline.pipelines.run_pipeline
 """
 
 import json
 import time
 
-from .etl.canonical import build_canonical_datasets
-from .etl.pipeline_config import (
+from ..etl.canonical import build_canonical_datasets
+from ..etl.pipeline_config import (
     EDA_DIR,
     FEATURE_VERSION,
     LEAKAGE_AUDIT_PATH,
@@ -17,11 +17,11 @@ from .etl.pipeline_config import (
     PIPELINE_VERSION,
     REPORTS_DIR,
 )
-from .etl.quality_reports import build_quality_reports
-from .etl.reference_features import build_reference_price_dataset
-from .etl.trainable import build_trainable_dataset
-from .etl.validation import validate_canonical_data, validate_reference_data
-from .logger import logger
+from ..etl.quality_reports import build_quality_reports
+from ..etl.reference_features import build_reference_price_dataset
+from ..etl.trainable import build_trainable_dataset
+from ..etl.validation import validate_canonical_data, validate_reference_data
+from ..core.logger import logger
 
 
 def run_full_ml_data_pipeline() -> dict:

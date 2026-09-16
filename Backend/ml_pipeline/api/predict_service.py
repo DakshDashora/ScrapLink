@@ -14,10 +14,10 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from .etl.pipeline_config import (
+from ..etl.pipeline_config import (
     ACTIVE_MODEL_POINTER, FEATURES_DIR, SCRAP_CANONICAL_PATH,
 )
-from .etl.trainable import FEATURE_COLUMNS, build_trainable_dataset
+from ..etl.trainable import FEATURE_COLUMNS, build_trainable_dataset
 
 _MODEL_CACHE: dict[str, Any] = {}
 

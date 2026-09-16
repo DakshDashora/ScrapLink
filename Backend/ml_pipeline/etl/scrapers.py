@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 
 from .pipeline_config import MCX_DIR, RAW_DIR, SCRAPMONSTER_DIR
 from .source_registry import register_source
-from ..logger import logger
+from ..core.logger import logger
 
 HEADERS = {
     "User-Agent": (

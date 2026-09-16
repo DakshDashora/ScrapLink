@@ -234,27 +234,6 @@ def build_reference_canonical_dataset(
     raw_paths = [Path(raw_path)] if raw_path is not None else discover_yahoo_files()
     raw_paths = [path for path in raw_paths if path.exists()]
     if not raw_paths:
-        legacy = _legacy_consolidated_reference()
-        if not legacy.empty:
-            REFERENCE_CANONICAL_PATH.parent.mkdir(parents=True, exist_ok=True)
-            legacy.sort_values(["ticker", "observation_date"]).to_csv(
-                REFERENCE_CANONICAL_PATH, index=False
-            )
-            return {
-                "data": legacy,
-                "path": str(REFERENCE_CANONICAL_PATH),
-                "manifest": {
-                    "status": "available_legacy_snapshot",
-                    "rows": int(len(legacy)),
-                    "source": "YahooFinanceLegacySnapshot",
-                    "source_file": str(RAW_CONSOLIDATED_PATH),
-                    "source_hash": _file_hash(RAW_CONSOLIDATED_PATH),
-                    "price_field": "spot_price_inr_kg",
-                    "currency_conversion": False,
-                    "unit_conversion": False,
-                    "limitation": "Legacy export used because no dedicated Yahoo snapshots exist.",
-                },
-            }
         empty = pd.DataFrame(columns=REFERENCE_COLUMNS)
         return {
             "data": empty,
@@ -263,7 +242,7 @@ def build_reference_canonical_dataset(
                 "status": "not_available",
                 "rows": 0,
                 "source": "YahooFinance",
-                "limitation": "No Yahoo raw snapshot is available; no history was fabricated.",
+                "limitation": "No dedicated Yahoo raw snapshot is available.",
             },
         }
     raw = pd.concat([pd.read_csv(source) for source in raw_paths], ignore_index=True)

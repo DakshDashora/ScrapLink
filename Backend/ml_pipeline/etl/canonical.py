@@ -144,12 +144,7 @@ def _load_mcx_file(path: Path) -> pd.DataFrame:
 
 
 def _scrap_files() -> list[Path]:
-    snapshots = discover_scrapmonster_files(SCRAPMONSTER_DIR)
-    # Legacy compatibility: the old export remains a valid input, but is never
-    # copied over or treated as a daily snapshot.
-    if RAW_CONSOLIDATED_PATH.exists() and RAW_CONSOLIDATED_PATH not in snapshots:
-        snapshots.append(RAW_CONSOLIDATED_PATH)
-    return sorted(snapshots)
+    return discover_scrapmonster_files(SCRAPMONSTER_DIR)
 
 
 def build_canonical_datasets() -> dict[str, Any]:
