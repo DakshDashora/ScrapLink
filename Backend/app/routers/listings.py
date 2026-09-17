@@ -62,6 +62,7 @@ def build_listing_response(listing: ScrapListing) -> dict:
         "asking_price": str(listing.asking_price) if listing.asking_price else None,
         "location": listing.location,
         "availability_status": listing.availability_status.value,
+        "view_count": listing.view_count,
         "created_at": listing.created_at.isoformat() if listing.created_at else None,
         "updated_at": listing.updated_at.isoformat() if listing.updated_at else None,
         "media": media_list
@@ -154,7 +155,9 @@ async def get_listings(
     max_quantity: Optional[float] = Query(None, description="Maximum quantity"),
     unit: Optional[ListingUnit] = Query(None, description="Unit (kg, tonne, unit, etc.)"),
     status: Optional[ListingStatus] = Query(ListingStatus.ACTIVE, description="Listing status"),
-    
+
+    city: Optional[str] = Query(None, description="Filter by city name"),
+    state: Optional[str] = Query(None, description="Filter by state name"),
     # Location filter
     latitude: Optional[float] = Query(None, description="Latitude for location search"),
     longitude: Optional[float] = Query(None, description="Longitude for location search"),
@@ -185,7 +188,8 @@ async def get_listings(
     
     query = db.query(ScrapListing).options(
         joinedload(ScrapListing.seller_org),
-        joinedload(ScrapListing.category)
+        joinedload(ScrapListing.category),
+        joinedload(ScrapListing.media)
     )
     
     if status:
@@ -226,6 +230,18 @@ async def get_listings(
     
     if latitude and longitude:
         print(f"   Location filter: lat={latitude}, lon={longitude}, radius={radius_km}km")
+
+    if city:
+        query = query.filter(
+            ScrapListing.location["city"].astext.ilike(f"%{city}%")
+        )
+        print(f"Filtering by city: {city}")
+    
+    if state:
+        query = query.filter(
+            ScrapListing.location["state"].astext.ilike(f"%{state}%")
+        )
+        print(f"Filtering by state: {state}")
     
     total = query.count()
     print(f"   Total matching listings: {total}")
@@ -293,7 +309,8 @@ async def get_my_listings(
     
     query = db.query(ScrapListing).options(
         joinedload(ScrapListing.seller_org),
-        joinedload(ScrapListing.category)
+        joinedload(ScrapListing.category),
+        joinedload(ScrapListing.media)
     ).filter(ScrapListing.seller_org_id.in_(org_ids))
     
     if status:
@@ -325,6 +342,8 @@ async def get_my_listings(
 async def get_listings_for_map(
     category_id: Optional[str] = Query(None, description="Filter by category ID"),
     material_name: Optional[str] = Query(None, description="Filter by material name"),
+    city: Optional[str] = Query(None, description="Filter by city"),
+    state: Optional[str] = Query(None, description="Filter by state"),
     status: Optional[ListingStatus] = Query(ListingStatus.ACTIVE, description="Listing status"),
     limit: int = Query(500, ge=1, le=2000, description="Maximum markers to return"),
     db: Session = Depends(get_db)
@@ -351,13 +370,21 @@ async def get_listings_for_map(
     
     query = db.query(ScrapListing).options(
         joinedload(ScrapListing.category),
+        joinedload(ScrapListing.media),
         joinedload(ScrapListing.media)
     )
+
     
     if status:
         query = query.filter(ScrapListing.availability_status == status)
     else:
         query = query.filter(ScrapListing.availability_status == ListingStatus.ACTIVE)
+
+    if city:
+        query = query.filter(ScrapListing.location["city"].astext.ilike(f"%{city}%"))
+    
+    if state:
+        query = query.filter(ScrapListing.location["state"].astext.ilike(f"%{state}%"))
     
     if category_id:
         try:
@@ -562,6 +589,16 @@ async def get_listing(
         )
     
     print(f" Listing found: {listing.material_name}")
+
+    is_owner = False
+    if current_user:
+        is_owner = check_listing_owner(listing, str(current_user.id), db)
+    
+    if not is_owner and listing.availability_status == ListingStatus.ACTIVE:
+        listing.view_count += 1
+        db.commit()
+        db.refresh(listing)
+        print(f"  View count incremented to {listing.view_count}")
     
     if listing.availability_status != ListingStatus.ACTIVE:
         print(f" Listing is {listing.availability_status.value}, checking access...")
@@ -642,7 +679,8 @@ async def update_listing(
         
         listing = db.query(ScrapListing).options(
             joinedload(ScrapListing.seller_org),
-            joinedload(ScrapListing.category)
+            joinedload(ScrapListing.category),
+            joinedload(ScrapListing.media)
         ).filter(ScrapListing.id == listing.id).first()
         
         return build_listing_response(listing)

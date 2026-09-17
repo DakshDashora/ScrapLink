@@ -42,6 +42,9 @@ class ScrapListing(Base):
     
     # Status
     availability_status = Column(Enum(ListingStatus), nullable=False, default=ListingStatus.ACTIVE)
+
+    view_count = Column(Integer, default=0, nullable=False)
+
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
