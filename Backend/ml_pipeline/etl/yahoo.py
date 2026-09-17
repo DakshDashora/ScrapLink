@@ -19,6 +19,7 @@ from .pipeline_config import (
     YAHOO_PERIOD,
     YAHOO_PRICE_FIELD,
     YAHOO_RAW_DIR,
+    YAHOO_DAILY_PERIOD,
     YAHOO_TICKERS,
 )
 
@@ -180,6 +181,16 @@ def _latest_raw_path(raw_dir: Path = YAHOO_RAW_DIR) -> Path | None:
     return paths[-1] if paths else None
 
 
+def discover_yahoo_files(raw_dir: Path = YAHOO_RAW_DIR) -> list[Path]:
+    """Return all immutable Yahoo snapshots in deterministic order."""
+    return sorted(raw_dir.glob("*.csv"))
+
+
+def collect_daily_yahoo_history() -> Path:
+    """Collect a small recent Yahoo window for the daily source job."""
+    return download_yahoo_history(period=YAHOO_DAILY_PERIOD)
+
+
 def _legacy_consolidated_reference() -> pd.DataFrame:
     """Load the existing Yahoo snapshot when no dedicated raw snapshot exists.
 
@@ -220,32 +231,9 @@ def build_reference_canonical_dataset(
     raw_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Normalize verified Yahoo close rows without currency/unit conversion."""
-    path = Path(raw_path) if raw_path is not None else _latest_raw_path()
-    if path is None or not path.exists():
-        legacy = _legacy_consolidated_reference()
-        if not legacy.empty:
-            REFERENCE_CANONICAL_PATH.parent.mkdir(parents=True, exist_ok=True)
-            legacy.sort_values(["ticker", "observation_date"]).to_csv(
-                REFERENCE_CANONICAL_PATH, index=False
-            )
-            return {
-                "data": legacy,
-                "path": str(REFERENCE_CANONICAL_PATH),
-                "manifest": {
-                    "status": "available_legacy_snapshot",
-                    "rows": int(len(legacy)),
-                    "source": "YahooFinanceLegacySnapshot",
-                    "source_file": str(RAW_CONSOLIDATED_PATH),
-                    "source_hash": _file_hash(RAW_CONSOLIDATED_PATH),
-                    "price_field": "spot_price_inr_kg",
-                    "currency_conversion": False,
-                    "unit_conversion": False,
-                    "limitation": (
-                        "Legacy export did not preserve Yahoo ticker symbols; "
-                        "download a dedicated Yahoo snapshot for full provenance."
-                    ),
-                },
-            }
+    raw_paths = [Path(raw_path)] if raw_path is not None else discover_yahoo_files()
+    raw_paths = [path for path in raw_paths if path.exists()]
+    if not raw_paths:
         empty = pd.DataFrame(columns=REFERENCE_COLUMNS)
         return {
             "data": empty,
@@ -254,10 +242,10 @@ def build_reference_canonical_dataset(
                 "status": "not_available",
                 "rows": 0,
                 "source": "YahooFinance",
-                "limitation": "No Yahoo raw snapshot is available; no history was fabricated.",
+                "limitation": "No dedicated Yahoo raw snapshot is available.",
             },
         }
-    raw = pd.read_csv(path)
+    raw = pd.concat([pd.read_csv(source) for source in raw_paths], ignore_index=True)
     required = {"observation_date", "ticker", "material", YAHOO_PRICE_FIELD}
     missing = sorted(required - set(raw.columns))
     if missing:
@@ -271,8 +259,12 @@ def build_reference_canonical_dataset(
     result = result[result["reference_price"] > 0].copy()
     result["price_field"] = YAHOO_PRICE_FIELD
     result["source"] = "YahooFinance"
-    result["source_file"] = str(path)
-    result["source_hash"] = _file_hash(path)
+    result["source_file"] = result.get("source_file", pd.NA)
+    result["source_hash"] = result.get("source_hash", pd.NA)
+    if result["source_file"].isna().all():
+        result["source_file"] = str(raw_paths[0]) if len(raw_paths) == 1 else "Yahoo:multiple_snapshots"
+    if result["source_hash"].isna().all():
+        result["source_hash"] = _file_hash(raw_paths[0]) if len(raw_paths) == 1 else "multiple_snapshot_hashes"
     result["ingestion_timestamp"] = _timestamp()
     result["is_synthetic"] = False
     for column in ["source_currency", "source_unit"]:
@@ -290,8 +282,7 @@ def build_reference_canonical_dataset(
             "status": "available",
             "rows": int(len(canonical)),
             "source": "YahooFinance",
-            "source_file": str(path),
-            "source_hash": _file_hash(path),
+            "source_files": [str(source) for source in raw_paths],
             "price_field": YAHOO_PRICE_FIELD,
             "currency_conversion": False,
             "unit_conversion": False,

@@ -184,6 +184,7 @@ def build_reference_price_dataset() -> dict[str, Any]:
     dataset["observation_day_of_week"] = dataset["observation_date"].dt.dayofweek
     dataset["observation_month"] = dataset["observation_date"].dt.month
     dataset["observation_quarter"] = dataset["observation_date"].dt.quarter
+    dataset["reference_history_rows"] = dataset.groupby("ticker").cumcount()
     output_columns = [
         "observation_date",
         "ticker",
@@ -194,13 +195,18 @@ def build_reference_price_dataset() -> dict[str, Any]:
         "source_currency",
         "source_unit",
         "price_field",
+        "reference_history_rows",
         TARGET,
         *FEATURE_COLUMNS,
     ]
     for column in output_columns:
         if column not in dataset:
             dataset[column] = pd.NA
-    supervised = dataset.dropna(subset=[TARGET, "reference_price_lag_1"]).copy()
+    # A row is supervised when its target is observed. Early observations in a
+    # series legitimately lack lag features; dropping them would discard real
+    # labeled data. Tree models can route missing lag values, while the
+    # history flag makes this cold-start condition explicit.
+    supervised = dataset.dropna(subset=[TARGET]).copy()
     supervised["observation_date"] = supervised["observation_date"].dt.strftime("%Y-%m-%d")
     supervised = supervised[output_columns].sort_values(
         ["observation_date", "ticker"]
@@ -238,7 +244,10 @@ def build_reference_price_dataset() -> dict[str, Any]:
             "source": "YahooFinance",
             "raw_rows": int(len(dataset)),
             "supervised_rows": int(len(supervised)),
-            "rows_without_prior_history": int(len(dataset) - len(supervised)),
+            "rows_without_prior_history": int(
+                dataset["reference_price_lag_1"].isna().sum()
+            ),
+            "rows_with_target": int(dataset[TARGET].notna().sum()),
+            "rows_excluded_invalid_target": int(dataset[TARGET].isna().sum()),
         },
     }
-
