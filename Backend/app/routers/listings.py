@@ -62,6 +62,7 @@ def build_listing_response(listing: ScrapListing) -> dict:
         "asking_price": str(listing.asking_price) if listing.asking_price else None,
         "location": listing.location,
         "availability_status": listing.availability_status.value,
+        "view_count": listing.view_count,
         "created_at": listing.created_at.isoformat() if listing.created_at else None,
         "updated_at": listing.updated_at.isoformat() if listing.updated_at else None,
         "media": media_list
@@ -185,7 +186,8 @@ async def get_listings(
     
     query = db.query(ScrapListing).options(
         joinedload(ScrapListing.seller_org),
-        joinedload(ScrapListing.category)
+        joinedload(ScrapListing.category),
+        joinedload(ScrapListing.media)
     )
     
     if status:
@@ -293,7 +295,8 @@ async def get_my_listings(
     
     query = db.query(ScrapListing).options(
         joinedload(ScrapListing.seller_org),
-        joinedload(ScrapListing.category)
+        joinedload(ScrapListing.category),
+        joinedload(ScrapListing.media)
     ).filter(ScrapListing.seller_org_id.in_(org_ids))
     
     if status:
@@ -351,6 +354,7 @@ async def get_listings_for_map(
     
     query = db.query(ScrapListing).options(
         joinedload(ScrapListing.category),
+        joinedload(ScrapListing.media),
         joinedload(ScrapListing.media)
     )
     
@@ -562,6 +566,16 @@ async def get_listing(
         )
     
     print(f" Listing found: {listing.material_name}")
+
+    is_owner = False
+    if current_user:
+        is_owner = check_listing_owner(listing, str(current_user.id), db)
+    
+    if not is_owner and listing.availability_status == ListingStatus.ACTIVE:
+        listing.view_count += 1
+        db.commit()
+        db.refresh(listing)
+        print(f"  View count incremented to {listing.view_count}")
     
     if listing.availability_status != ListingStatus.ACTIVE:
         print(f" Listing is {listing.availability_status.value}, checking access...")
@@ -642,7 +656,8 @@ async def update_listing(
         
         listing = db.query(ScrapListing).options(
             joinedload(ScrapListing.seller_org),
-            joinedload(ScrapListing.category)
+            joinedload(ScrapListing.category),
+            joinedload(ScrapListing.media)
         ).filter(ScrapListing.id == listing.id).first()
         
         return build_listing_response(listing)
