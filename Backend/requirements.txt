@@ -6,6 +6,7 @@ python-dotenv
 passlib[bcrypt]
 bcrypt
 pyjwt
+python-jose[cryptography]
 pydantic
 pydantic-settings
 email-validator
