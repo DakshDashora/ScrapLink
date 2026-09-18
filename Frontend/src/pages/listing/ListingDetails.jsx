@@ -7,7 +7,7 @@ import {
   clearCurrent,
 } from '../features/listings/listingSlice';
 import PriceRecommendation from '../components/listings/PriceRecommendation';
-import MapView from '../components/map/MapView';
+import MapView from '../../components/map/MapView';
 
 const ListingDetails = () => {
   const { id } = useParams();
