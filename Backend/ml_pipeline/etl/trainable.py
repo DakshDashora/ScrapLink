@@ -86,11 +86,18 @@ def _feature_dictionary() -> dict[str, dict[str, str]]:
     }
 
 
-def build_trainable_dataset() -> dict[str, Any]:
-    if not SCRAP_CANONICAL_PATH.exists():
-        raise FileNotFoundError(f"Canonical ScrapMonster dataset not found: {SCRAP_CANONICAL_PATH}")
-    scrap = pd.read_csv(SCRAP_CANONICAL_PATH)
-    mcx = pd.read_csv(MCX_CANONICAL_PATH) if MCX_CANONICAL_PATH.exists() else pd.DataFrame()
+def build_trainable_dataset(
+    scrap: pd.DataFrame | None = None,
+    mcx: pd.DataFrame | None = None,
+) -> dict[str, Any]:
+    if scrap is None:
+        if not SCRAP_CANONICAL_PATH.exists():
+            raise FileNotFoundError(
+                f"Canonical ScrapMonster dataset not found: {SCRAP_CANONICAL_PATH}"
+            )
+        scrap = pd.read_csv(SCRAP_CANONICAL_PATH)
+    if mcx is None:
+        mcx = pd.read_csv(MCX_CANONICAL_PATH) if MCX_CANONICAL_PATH.exists() else pd.DataFrame()
     required = {"observation_date", "material", "scrap_type", TARGET}
     missing = sorted(required - set(scrap.columns))
     if missing:

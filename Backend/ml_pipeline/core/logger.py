@@ -16,6 +16,7 @@ def setup_logger(name="ScrapLink_ML", log_dir=None):
 
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
+    logger.propagate = False
 
     # Avoid duplicate handlers if setup_logger is called multiple times
     if not logger.handlers:
