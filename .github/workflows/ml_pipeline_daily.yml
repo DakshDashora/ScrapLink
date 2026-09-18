@@ -1,0 +1,49 @@
+name: Daily ML Pipeline
+
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  daily-ml-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ML_PIPELINE_URL: https://scraplink-q4mo.onrender.com
+      ML_JOB_TOKEN: ${{ secrets.ML_JOB_TOKEN }}
+
+    steps:
+      - name: Validate required secret
+        shell: bash
+        run: |
+          if [[ -z "$ML_JOB_TOKEN" ]]; then
+            echo "Repository secret ML_JOB_TOKEN is not configured."
+            exit 1
+          fi
+
+      - name: Run daily ingestion
+        shell: bash
+        run: |
+          curl --silent --show-error --fail-with-body \
+            --retry 2 \
+            --retry-delay 30 \
+            --request POST "$ML_PIPELINE_URL/jobs/daily-ingestion" \
+            --header "X-ML-Job-Token: $ML_JOB_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data '{"request_id":"github-actions-daily-ingestion"}'
+
+      - name: Run feature engineering
+        shell: bash
+        run: |
+          curl --silent --show-error --fail-with-body \
+            --max-time 900 \
+            --retry 2 \
+            --retry-delay 30 \
+            --request POST "$ML_PIPELINE_URL/jobs/feature-engineering" \
+            --header "X-ML-Job-Token: $ML_JOB_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data '{"request_id":"github-actions-feature-engineering"}'
