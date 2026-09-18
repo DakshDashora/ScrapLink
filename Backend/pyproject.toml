@@ -27,5 +27,9 @@ dependencies = [
     "xgboost>=3.4.1",
     "yfinance>=1.7.0",
     "cloudinary>=1.46.2",
-    "python-multipart==0.0.32",
+    "python-multipart",
+    "twilio",                 
+    "httpx",                  
+    "pgvector",              
+    "bcrypt",                
 ]
