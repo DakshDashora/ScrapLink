@@ -1,10 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.database import init_db
+from app.database import init_db,engine,Base
 from app.routers import auth_router, otp_router, org_router, listings_router 
 from app.routers.categories import router as categories_router 
 from app.config import settings
 from app.utils.cloudinary_service import init_cloudinary  
+from app.models import (
+    User, Organization, OrganizationMember, OTPRecord,
+    ScrapCategory, ScrapListing, ListingMedia
+)
+
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -36,6 +41,9 @@ async def startup_event():
     try:
         init_db()
         print("Database initialized with pgvector")
+
+        Base.metadata.create_all(bind=engine)
+        print("✅ Database tables created/verified")
     except Exception as e:
         print(f" Database initialization error: {e}")
 
