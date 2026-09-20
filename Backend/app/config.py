@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     PORT: int = 8000
     DEBUG: bool = True
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+
+    BREVO_API_KEY: Optional[str] = None
     
     # Email (REAL - Required for email OTP)
     EMAIL_HOST: str

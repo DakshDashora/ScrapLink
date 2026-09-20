@@ -76,7 +76,7 @@ async def register_user(user_data: UserRegister, db: Session = Depends(get_db)):
     
     # 🔥 AUTO-SEND EMAIL VERIFICATION OTP
     try:
-        sent, otp_code = generate_and_send_otp(user, OTPType.EMAIL_VERIFICATION, db)
+        sent, otp_code = await generate_and_send_otp(user, OTPType.EMAIL_VERIFICATION, db)
         if not sent:
             print(f"⚠️ Warning: Failed to send email OTP to {user.email}")
     except Exception as e:
