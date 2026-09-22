@@ -3,13 +3,10 @@ uvicorn[standard]
 sqlalchemy
 psycopg2-binary
 python-dotenv
-passlib[bcrypt]
-bcrypt
 pyjwt
-
+python-jose[cryptography]
 pydantic
 pydantic-settings
-python-jose[cryptography]
 email-validator
 python-multipart
 cloudinary
@@ -27,3 +24,5 @@ joblib
 matplotlib
 reportlab
 yfinance
+bcrypt
+resend[async]

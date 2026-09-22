@@ -16,25 +16,20 @@ import uuid
 
 router = APIRouter(prefix="/auth/otp", tags=["OTP Verification"])
 
-
-# INTERNAL HELPER FUNCTION
-def generate_and_send_otp(user: User, otp_type: OTPType, db: Session):
+async def generate_and_send_otp(user: User, otp_type: OTPType, db: Session):
     """
     Internal function to generate and send OTP
-    
-    EMAIL_VERIFICATION: Sends REAL email via SMTP
-    PHONE_VERIFICATION: Sends MOCK SMS (logs to console)
-    PASSWORD_RESET: Sends REAL email via SMTP
     """
     # Generate OTP
     otp_code = generate_otp()
     otp_hash = get_password_hash(otp_code)
     
+    # Print for debugging
     print(f"\n{'='*60}")
-    print(f" OTP GENERATED: {otp_type.value}")
+    print(f"🔥 OTP GENERATED: {otp_type.value}")
     print(f"{'='*60}")
-    print(f" OTP CODE: {otp_code}")
-    print(f" User: {user.email}")
+    print(f"🔑 OTP CODE: {otp_code}")
+    print(f"👤 User: {user.email}")
     print(f"{'='*60}\n")
     
     # Delete old expired OTPs
@@ -62,26 +57,26 @@ def generate_and_send_otp(user: User, otp_type: OTPType, db: Session):
     sent = False
     
     if otp_type == OTPType.EMAIL_VERIFICATION:
-        # REAL EMAIL - sends actual email
-        sent = send_email_otp(user.email, otp_code, "email verification")
+        # ✅ AWAIT the async function
+        sent = await send_email_otp(user.email, otp_code, "email verification")
         if sent:
-            print(f" Email OTP sent to {user.email}")
+            print(f"✅ Email OTP sent to {user.email}")
         else:
-            print(f" Failed to send email OTP to {user.email}")
+            print(f"❌ Failed to send email OTP to {user.email}")
     
     elif otp_type == OTPType.PHONE_VERIFICATION:
         sent = send_sms_otp(user.phone, otp_code)
-        print(f" MOCK SMS OTP for {user.phone}: {otp_code}")
-
+        print(f"📱 MOCK SMS OTP for {user.phone}: {otp_code}")
+    
     elif otp_type == OTPType.PASSWORD_RESET:
-        sent = send_password_reset_email(user.email, otp_code)
+        # ✅ AWAIT the async function
+        sent = await send_password_reset_email(user.email, otp_code)
         if sent:
-            print(f" Password reset email sent to {user.email}")
+            print(f"✅ Password reset email sent to {user.email}")
         else:
-            print(f" Failed to send password reset email to {user.email}")
+            print(f"❌ Failed to send password reset email to {user.email}")
     
     return sent, otp_code
-
 
 # ============================================
 # REQUEST OTP ENDPOINT (No Auth Required)
@@ -111,7 +106,7 @@ async def request_otp(
         )
     
     print(f" User found: {user.email}")
-    sent, otp_code = generate_and_send_otp(user, otp_request.type, db)
+    sent, otp_code = await generate_and_send_otp(user, otp_request.type, db)
     
     return OTPResponse(
         message="OTP sent successfully",
@@ -147,7 +142,7 @@ async def resend_otp(
     ).delete()
     db.commit()
     
-    sent, otp_code = generate_and_send_otp(user, otp_request.type, db)
+    sent, otp_code = await generate_and_send_otp(user, otp_request.type, db)
     
     return OTPResponse(
         message="OTP resent successfully",
@@ -225,7 +220,7 @@ async def verify_otp(
         print(f"✅ Email verified for {user.email}")
         print(f"📱 Now auto-sending PHONE OTP...")
         
-        sent, otp_code = generate_and_send_otp(user, OTPType.PHONE_VERIFICATION, db)
+        sent, otp_code =await generate_and_send_otp(user, OTPType.PHONE_VERIFICATION, db)
         
         return {
             "message": " Email verified successfully! Phone OTP has been sent (MOCK - check console).",
@@ -266,7 +261,7 @@ async def request_password_reset(
     if not user:
         return {"message": "Password reset OTP sent if email exists"}
     
-    sent, otp_code = generate_and_send_otp(user, OTPType.PASSWORD_RESET, db)
+    sent, otp_code =await generate_and_send_otp(user, OTPType.PASSWORD_RESET, db)
     
     return {"message": "Password reset OTP sent if email exists"}
 
