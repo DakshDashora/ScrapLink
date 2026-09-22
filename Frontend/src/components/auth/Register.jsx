@@ -13,18 +13,18 @@ const Register = () => {
   });
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { isLoading, error } = useSelector((state) => state.auth);
+  const { isLoading, error } = useSelector((s) => s.auth);
 
-  const handleChange = (e) => {
+  const handleChange = (e) =>
     setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    dispatch(registerUser(formData)).unwrap()
+    dispatch(registerUser(formData))
+      .unwrap()
       .then(() => {
-        // After registration, go to login or verification pages
-        navigate('/login');
+        // Backend auto-sends email OTP → go to email verification page
+        navigate('/verify-email');
       })
       .catch(() => {});
   };
@@ -61,7 +61,7 @@ const Register = () => {
           <input
             type="password"
             name="password"
-            placeholder="Password"
+            placeholder="Password (8+ chars, upper/lower/digit)"
             value={formData.password}
             onChange={handleChange}
             required
@@ -69,14 +69,20 @@ const Register = () => {
           <select name="role" value={formData.role} onChange={handleChange}>
             <option value="Buyer">Buyer</option>
             <option value="Seller">Seller</option>
+            <option value="Admin">Admin</option>
           </select>
+
           {error && <div className="error-message">{error}</div>}
+
           <button type="submit" disabled={isLoading}>
             {isLoading ? 'Registering...' : 'Register'}
           </button>
         </form>
+
         <div className="auth-links">
-          <Link to="/login" onClick={() => dispatch(clearError())}>Already have an account? Login</Link>
+          <Link to="/login" onClick={() => dispatch(clearError())}>
+            Already have an account? Login
+          </Link>
         </div>
       </div>
     </div>

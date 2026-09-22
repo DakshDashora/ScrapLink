@@ -2,19 +2,17 @@ import axios from 'axios';
 
 const API_BASE_URL =
   (typeof process !== 'undefined' && process.env.REACT_APP_API_URL) ||
-  'http://localhost:8000';
+  'https://scraplink-yz18.onrender.com';
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
 });
 
-// Add JWT to every request
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('accessToken');
     if (token) config.headers.Authorization = `Bearer ${token}`;
 
-    // Let axios pick the right content-type for FormData
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
     } else if (!config.headers['Content-Type']) {
@@ -25,7 +23,6 @@ axiosInstance.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Handle 401 globally
 axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {

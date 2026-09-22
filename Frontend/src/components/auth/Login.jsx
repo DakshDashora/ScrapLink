@@ -8,20 +8,19 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { isLoading, error, token } = useSelector((state) => state.auth);
+  const { isLoading, error, token } = useSelector((s) => s.auth);
 
   useEffect(() => {
-    if (token) {
-      navigate('/dashboard');
-    }
+    if (token) navigate('/dashboard');
   }, [token, navigate]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    dispatch(loginUser({ email, password }));
+    dispatch(loginUser({ email, password }))
+      .unwrap()
+      .then(() => navigate('/dashboard'))
+      .catch(() => {});
   };
-
-  const handleClearError = () => dispatch(clearError());
 
   return (
     <div className="auth-container">
@@ -47,9 +46,14 @@ const Login = () => {
             {isLoading ? 'Logging in...' : 'Login'}
           </button>
         </form>
+
         <div className="auth-links">
-          <Link to="/forgot-password" onClick={handleClearError}>Forgot Password?</Link>
-          <Link to="/register" onClick={handleClearError}>Create Account</Link>
+          <Link to="/forgot-password" onClick={() => dispatch(clearError())}>
+            Forgot Password?
+          </Link>
+          <Link to="/register" onClick={() => dispatch(clearError())}>
+            Create Account
+          </Link>
         </div>
       </div>
     </div>
