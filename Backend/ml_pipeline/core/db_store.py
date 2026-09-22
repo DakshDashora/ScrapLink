@@ -193,3 +193,26 @@ def load_source_dataframes(db: Session) -> dict[str, pd.DataFrame]:
     reference["material"] = reference["material"].replace("", pd.NA)
     reference["ingestion_timestamp"] = pd.NA
     return {"scrap": scrap, "mcx": mcx, "reference": reference}
+
+
+def load_feature_dataframe(db: Session) -> pd.DataFrame:
+    """Load generated features from PostgreSQL for analysis and training."""
+    rows = db.execute(
+        select(FeatureObservation).order_by(
+            FeatureObservation.observation_date,
+            FeatureObservation.id,
+        )
+    ).scalars().all()
+    records: list[dict[str, Any]] = []
+    for row in rows:
+        record = dict(row.features or {})
+        record.update({
+            "observation_date": row.observation_date,
+            "material": row.material,
+            "scrap_type": row.scrap_type,
+            "price_inr_per_kg": row.target_price_inr_per_kg,
+            "source": row.target_source,
+            "is_synthetic": False,
+        })
+        records.append(record)
+    return pd.DataFrame(records)

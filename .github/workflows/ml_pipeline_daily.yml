@@ -2,7 +2,7 @@ name: Daily ML Pipeline
 
 on:
   schedule:
-    - cron: "0 16 * * *"
+    - cron: "0 13 * * *"
   workflow_dispatch:
 
 permissions:
@@ -29,6 +29,7 @@ jobs:
         shell: bash
         run: |
           curl --silent --show-error --fail-with-body \
+            --max-time 900 \
             --retry 2 \
             --retry-delay 30 \
             --request POST "$ML_PIPELINE_URL/jobs/daily-ingestion" \

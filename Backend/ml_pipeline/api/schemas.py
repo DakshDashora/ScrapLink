@@ -57,3 +57,15 @@ class TrainingResponse(StrictSchema):
     minimum_collection_dates: StrictInt | None = Field(default=None, ge=0)
     eligible_rows: StrictInt | None = Field(default=None, ge=0)
     minimum_training_rows: StrictInt | None = Field(default=None, ge=0)
+
+
+class JobStatusResponse(StrictSchema):
+    run_id: StrictInt = Field(gt=0)
+    job_type: StrictStr
+    status: StrictStr
+    rows_read: StrictInt | None = Field(default=None, ge=0)
+    rows_written: StrictInt | None = Field(default=None, ge=0)
+    details: dict[str, Any] | None = None
+    error_message: StrictStr | None = None
+    started_at: StrictStr
+    completed_at: StrictStr | None = None

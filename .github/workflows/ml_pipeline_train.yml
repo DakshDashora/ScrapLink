@@ -1,0 +1,39 @@
+name: Monthly ML Model Training
+
+on:
+  schedule:
+    # First day of each month at 11:00 PM IST = 17:30 UTC.
+    - cron: "30 17 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  train-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ML_PIPELINE_URL: https://scraplink-q4mo.onrender.com
+      ML_JOB_TOKEN: ${{ secrets.ML_JOB_TOKEN }}
+
+    steps:
+      - name: Validate required secret
+        shell: bash
+        run: |
+          if [[ -z "$ML_JOB_TOKEN" ]]; then
+            echo "Repository secret ML_JOB_TOKEN is not configured."
+            exit 1
+          fi
+
+      - name: Run guarded model training
+        shell: bash
+        run: |
+          curl --silent --show-error --fail-with-body \
+            --max-time 1800 \
+            --retry 2 \
+            --retry-delay 30 \
+            --request POST "$ML_PIPELINE_URL/jobs/train" \
+            --header "X-ML-Job-Token: $ML_JOB_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data '{"request_id":"github-actions-monthly-training"}'
