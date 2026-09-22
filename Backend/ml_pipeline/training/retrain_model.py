@@ -33,8 +33,8 @@ def _quantile_model(quantile: float):
     )
 
 
-def retrain() -> dict[str, Any]:
-    result = build_trainable_dataset()
+def retrain(dataset: pd.DataFrame | None = None) -> dict[str, Any]:
+    result = build_trainable_dataset() if dataset is None else {"dataset": dataset, "path": "database"}
     data = result["dataset"]
     dates = pd.to_datetime(data["observation_date"], errors="coerce")
     genuine_dates = int(dates.dropna().dt.date.nunique())

@@ -10,16 +10,21 @@ from sqlalchemy.orm import Session
 from ..core.database import get_db, init_database
 from ..core.db_store import (
     finish_run,
+    load_feature_dataframe,
+    load_source_dataframes,
     load_source_dataframes,
     persist_canonical_sources,
     persist_features,
     start_run,
 )
+from ..core.db_models import PipelineRun
+from ..core.job_lock import job_lock
 from ..core.logger import logger
 from .schemas import (
     DailyIngestionResponse,
     FeatureEngineeringResponse,
     HealthResponse,
+    JobStatusResponse,
     JobTriggerRequest,
     TrainingResponse,
     WeeklyAnalysisResponse,
@@ -60,6 +65,11 @@ def daily_ingestion(
     db: Session = Depends(get_db),
     _: None = Depends(require_job_token),
 ) -> DailyIngestionResponse:
+    try:
+        lock = job_lock(db, "daily_ingestion")
+        lock.__enter__()
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail="Daily ingestion is already running") from exc
     run = start_run(db, "daily_ingestion")
     try:
         collection = run_collection()
@@ -85,6 +95,8 @@ def daily_ingestion(
     except Exception as exc:
         finish_run(db, run, "failed", error_message=str(exc))
         raise HTTPException(status_code=500, detail="Daily ingestion failed") from exc
+    finally:
+        lock.__exit__(None, None, None)
 
 
 @app.post("/jobs/feature-engineering", response_model=FeatureEngineeringResponse)
@@ -93,6 +105,11 @@ def feature_engineering(
     db: Session = Depends(get_db),
     _: None = Depends(require_job_token),
 ) -> FeatureEngineeringResponse:
+    try:
+        lock = job_lock(db, "feature_engineering")
+        lock.__enter__()
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail="Feature engineering is already running") from exc
     run = start_run(db, "feature_engineering")
     try:
         persisted_sources = load_source_dataframes(db)
@@ -118,32 +135,90 @@ def feature_engineering(
     except Exception as exc:
         finish_run(db, run, "failed", error_message=str(exc))
         raise HTTPException(status_code=500, detail="Feature engineering failed") from exc
+    finally:
+        lock.__exit__(None, None, None)
 
 
 @app.post("/jobs/weekly-analysis", response_model=WeeklyAnalysisResponse)
 def weekly_analysis(
     _request: JobTriggerRequest | None = Body(default=None),
+    db: Session = Depends(get_db),
     _: None = Depends(require_job_token),
 ) -> WeeklyAnalysisResponse:
     try:
+        lock = job_lock(db, "weekly_analysis")
+        lock.__enter__()
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail="Weekly analysis is already running") from exc
+    run = start_run(db, "weekly_analysis")
+    try:
+        sources = load_source_dataframes(db)
+        result = build_trainable_dataset(sources["scrap"], sources["mcx"])
+        persistence = persist_features(db, result["dataset"])
+        finish_run(
+            db, run, "succeeded", details=result["eligibility"],
+            rows_read=len(result["dataset"]), rows_written=persistence["inserted"],
+        )
         return WeeklyAnalysisResponse(
             status="succeeded",
-            manifest=run_full_ml_data_pipeline(),
+            manifest={
+                "run_id": run.id,
+                "source_rows": {key: len(value) for key, value in sources.items()},
+                "feature_persistence": persistence,
+                "eligibility": result["eligibility"],
+            },
         )
     except Exception as exc:
+        finish_run(db, run, "failed", error_message=str(exc))
         raise HTTPException(status_code=500, detail="Weekly analysis failed") from exc
+    finally:
+        lock.__exit__(None, None, None)
 
 
 @app.post("/jobs/train", response_model=TrainingResponse)
 def train(
     _request: JobTriggerRequest | None = Body(default=None),
+    db: Session = Depends(get_db),
     _: None = Depends(require_job_token),
 ) -> TrainingResponse:
     from ..training.retrain_model import retrain
     try:
-        return TrainingResponse(**retrain())
+        lock = job_lock(db, "train")
+        lock.__enter__()
     except Exception as exc:
+        raise HTTPException(status_code=409, detail="Training is already running") from exc
+    run = start_run(db, "train")
+    try:
+        result = retrain(load_feature_dataframe(db))
+        finish_run(db, run, "succeeded", details=result, rows_written=0)
+        return TrainingResponse(**result)
+    except Exception as exc:
+        finish_run(db, run, "failed", error_message=str(exc))
         raise HTTPException(status_code=500, detail="Training failed") from exc
+    finally:
+        lock.__exit__(None, None, None)
+
+
+@app.get("/jobs/{run_id}", response_model=JobStatusResponse)
+def job_status(
+    run_id: int,
+    _: None = Depends(require_job_token),
+    db: Session = Depends(get_db),
+) -> JobStatusResponse:
+    run = db.get(PipelineRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Pipeline run not found")
+    return JobStatusResponse(
+        run_id=run.id,
+        job_type=run.job_type,
+        status=run.status,
+        rows_read=run.rows_read,
+        rows_written=run.rows_written,
+        details=run.details,
+        error_message=run.error_message,
+        started_at=run.started_at.isoformat(),
+        completed_at=run.completed_at.isoformat() if run.completed_at else None,
+    )
 
 
 if __name__ == "__main__":
