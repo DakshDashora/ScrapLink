@@ -12,7 +12,6 @@ from ..core.db_store import (
     finish_run,
     load_feature_dataframe,
     load_source_dataframes,
-    load_source_dataframes,
     persist_canonical_sources,
     persist_features,
     start_run,
@@ -26,6 +25,8 @@ from .schemas import (
     HealthResponse,
     JobStatusResponse,
     JobTriggerRequest,
+    PredictionRequest,
+    PredictionResponse,
     TrainingResponse,
     WeeklyAnalysisResponse,
 )
@@ -35,6 +36,7 @@ from ..etl.trainable import build_trainable_dataset
 from ..jobs.collect_daily import run_collection
 from ..pipelines.run_pipeline import run_full_ml_data_pipeline
 from ..utils import ML_JOB_TOKEN
+from .predict_service import get_price_prediction
 
 app = FastAPI(title="ScrapLink ML Pipeline Service", version="1.0.0")
 logger.info("ML FastAPI application object created")
@@ -57,6 +59,20 @@ def startup() -> None:
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", service="ml_pipeline")
+
+
+@app.post("/predict-price", response_model=PredictionResponse)
+def predict_price(
+    request: PredictionRequest,
+    _: None = Depends(require_job_token),
+) -> PredictionResponse:
+    try:
+        result = get_price_prediction(**request.model_dump(exclude_none=True))
+        return PredictionResponse(**result)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/jobs/daily-ingestion", response_model=DailyIngestionResponse)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
 
 
 class StrictSchema(BaseModel):
@@ -18,6 +18,20 @@ class JobTriggerRequest(StrictSchema):
     )
 
 
+class PredictionRequest(StrictSchema):
+    commodity: StrictStr = Field(min_length=1, max_length=128)
+    lag_1: StrictFloat | None = Field(default=None, ge=0)
+    lag_7: StrictFloat | None = Field(default=None, ge=0)
+    lag_14: StrictFloat | None = Field(default=None, ge=0)
+    lag_30: StrictFloat | None = Field(default=None, ge=0)
+    rolling_mean_7: StrictFloat | None = Field(default=None, ge=0)
+    rolling_mean_30: StrictFloat | None = Field(default=None, ge=0)
+    rolling_std_7: StrictFloat | None = Field(default=None, ge=0)
+    rolling_std_30: StrictFloat | None = Field(default=None, ge=0)
+    pct_change_7: StrictFloat | None = None
+    pct_change_30: StrictFloat | None = None
+
+
 class PersistenceSummary(StrictSchema):
     attempted: StrictInt = Field(ge=0)
     inserted: StrictInt = Field(ge=0)
@@ -27,6 +41,23 @@ class PersistenceSummary(StrictSchema):
 class HealthResponse(StrictSchema):
     status: Literal["ok"]
     service: Literal["ml_pipeline"]
+
+
+class PredictionResponse(StrictSchema):
+    status: Literal["success"]
+    commodity: StrictStr
+    estimated_price_p10_inr_per_kg: StrictFloat = Field(ge=0)
+    estimated_price_p50_inr_per_kg: StrictFloat = Field(ge=0)
+    estimated_price_p90_inr_per_kg: StrictFloat = Field(ge=0)
+    model_version: StrictStr
+    prediction_date: StrictStr | None = None
+    estimate_type: Literal["scrap_market_reference"]
+    is_guaranteed_transaction_price: bool
+    recommended_price: StrictFloat = Field(ge=0)
+    price_band: dict[str, StrictFloat]
+    trend: Literal["UPWARD", "DOWNWARD", "STABLE"]
+    unit: Literal["INR/kg"]
+    disclaimer: StrictStr
 
 
 class DailyIngestionResponse(StrictSchema):
@@ -57,6 +88,10 @@ class TrainingResponse(StrictSchema):
     minimum_collection_dates: StrictInt | None = Field(default=None, ge=0)
     eligible_rows: StrictInt | None = Field(default=None, ge=0)
     minimum_training_rows: StrictInt | None = Field(default=None, ge=0)
+    validation_mae: StrictFloat | None = Field(default=None, ge=0)
+    maximum_validation_mae: StrictFloat | None = Field(default=None, ge=0)
+    active_validation_mae: StrictFloat | None = Field(default=None, ge=0)
+    promotion: dict[str, Any] | None = None
 
 
 class JobStatusResponse(StrictSchema):

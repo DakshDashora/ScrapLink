@@ -23,6 +23,19 @@ load_dotenv(BACKEND_DIR / ".env", override=False)
 ML_JOB_TOKEN = os.getenv("ML_JOB_TOKEN", "").strip()
 ML_DATABASE_URL = os.getenv("ML_DATABASE_URL", "").strip()
 
+
+def _configured_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
+    if parsed < 0:
+        raise ValueError(f"{name} must be non-negative")
+    return parsed
+
 def _configured_tickers() -> dict[str, str]:
     """Return the fixed public Yahoo ticker mapping used by the pipeline."""
     value = YAHOO_TICKERS_JSON
@@ -55,7 +68,9 @@ TRAINING_WINDOW = "all"
 MIN_SOURCE_ROWS = 1
 MCX_ASOF_MAX_DAYS = 365
 RANDOM_SEED = 42
-PROMOTION_MAX_VALIDATION_MAE = float("inf")
+PROMOTION_MAX_VALIDATION_MAE = _configured_float(
+    "ML_PROMOTION_MAX_VALIDATION_MAE", float("inf")
+)
 YAHOO_TICKERS_JSON = '{"HG=F":"Copper","ALI=F":"Aluminium","ZNC=F":"Zinc","PB=F":"Lead"}'
 YAHOO_TICKERS = _configured_tickers()
 YAHOO_PERIOD = "max"
