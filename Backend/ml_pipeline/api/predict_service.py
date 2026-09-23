@@ -125,12 +125,9 @@ def get_price_prediction(
         estimates = np.sort(np.asarray(raw, dtype=float))
         model_version = active["version"]
     else:
-        # No model is promoted until historical coverage exists. This
-        # compatibility fallback reports the latest observed target, not a
-        # fabricated interval or MCX-derived price.
-        observed = float(feature_values["scrap_price_lag_1"])
-        estimates = np.array([observed, observed, observed], dtype=float)
-        model_version = "no_active_model"
+        raise RuntimeError(
+            "No active price model is available; training history is insufficient"
+        )
     if not np.isfinite(estimates).all() or (estimates < 0).any():
         raise ValueError("Model returned non-finite or negative price estimates")
     p10, p50, p90 = [round(float(value), 2) for value in estimates]
