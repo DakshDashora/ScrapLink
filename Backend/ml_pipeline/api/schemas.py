@@ -88,6 +88,10 @@ class TrainingResponse(StrictSchema):
     minimum_collection_dates: StrictInt | None = Field(default=None, ge=0)
     eligible_rows: StrictInt | None = Field(default=None, ge=0)
     minimum_training_rows: StrictInt | None = Field(default=None, ge=0)
+    validation_mae: StrictFloat | None = Field(default=None, ge=0)
+    maximum_validation_mae: StrictFloat | None = Field(default=None, ge=0)
+    active_validation_mae: StrictFloat | None = Field(default=None, ge=0)
+    promotion: dict[str, Any] | None = None
 
 
 class JobStatusResponse(StrictSchema):

@@ -6,7 +6,6 @@ arguments remain accepted so existing API callers can migrate gradually.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -14,10 +13,9 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from ..etl.pipeline_config import (
-    ACTIVE_MODEL_POINTER, FEATURES_DIR, SCRAP_CANONICAL_PATH,
-)
+from ..etl.pipeline_config import SCRAP_CANONICAL_PATH
 from ..etl.trainable import FEATURE_COLUMNS, build_trainable_dataset
+from ..training.model_registry import load_active_model_metadata
 
 _MODEL_CACHE: dict[str, Any] = {}
 
@@ -34,12 +32,12 @@ def _latest_observation(commodity: str) -> dict[str, Any] | None:
 
 
 def _load_active() -> dict[str, Any] | None:
-    if not ACTIVE_MODEL_POINTER.exists():
+    metadata = load_active_model_metadata()
+    if metadata is None:
         return None
-    pointer = json.loads(ACTIVE_MODEL_POINTER.read_text(encoding="utf-8"))
-    directory = Path(pointer["path"])
-    if pointer.get("version") in _MODEL_CACHE:
-        return _MODEL_CACHE[pointer["version"]]
+    directory = Path(metadata["path"])
+    if metadata.get("version") in _MODEL_CACHE:
+        return _MODEL_CACHE[metadata["version"]]
     models = {}
     for quantile in (10, 50, 90):
         path = directory / f"model_p{quantile}.joblib"
@@ -48,8 +46,12 @@ def _load_active() -> dict[str, Any] | None:
         models[quantile] = joblib.load(path)
     schema_path = directory / "feature_schema.json"
     schema = json.loads(schema_path.read_text(encoding="utf-8")) if schema_path.exists() else {}
-    loaded = {"version": pointer["version"], "models": models, "features": schema.get("feature_names", FEATURE_COLUMNS)}
-    _MODEL_CACHE[pointer["version"]] = loaded
+    loaded = {
+        "version": metadata["version"],
+        "models": models,
+        "features": schema.get("feature_names", FEATURE_COLUMNS),
+    }
+    _MODEL_CACHE[metadata["version"]] = loaded
     return loaded
 
 

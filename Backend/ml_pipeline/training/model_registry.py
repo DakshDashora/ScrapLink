@@ -18,9 +18,20 @@ def _checksum(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _artifact_files(directory: Path) -> list[Path]:
+    return sorted(path for path in directory.rglob("*") if path.is_file())
+
+
 def write_active_pointer(version: str, version_dir: str | Path, *, pointer: Path = ACTIVE_MODEL_POINTER) -> Path:
     directory = Path(version_dir)
-    required = [directory / "metadata.json", directory / "feature_schema.json", directory / "metrics.json"]
+    required = [
+        directory / "metadata.json",
+        directory / "feature_schema.json",
+        directory / "metrics.json",
+        directory / "model_p10.joblib",
+        directory / "model_p50.joblib",
+        directory / "model_p90.joblib",
+    ]
     missing = [str(path) for path in required if not path.exists()]
     if missing:
         raise FileNotFoundError(f"Cannot promote incomplete model artifact: {missing}")
@@ -28,7 +39,10 @@ def write_active_pointer(version: str, version_dir: str | Path, *, pointer: Path
     payload = {
         "version": version,
         "path": str(directory),
-        "artifact_checksums": {path.name: _checksum(path) for path in required},
+        "artifact_checksums": {
+            str(path.relative_to(directory)): _checksum(path)
+            for path in _artifact_files(directory)
+        },
     }
     temporary = pointer.with_suffix(".tmp")
     temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -43,6 +57,13 @@ def load_active_model_metadata(pointer: Path = ACTIVE_MODEL_POINTER) -> dict[str
     directory = Path(payload["path"])
     if not directory.exists():
         raise FileNotFoundError(f"Active model directory does not exist: {directory}")
+    expected = payload.get("artifact_checksums", {})
+    actual_files = {
+        str(path.relative_to(directory)): _checksum(path)
+        for path in _artifact_files(directory)
+    }
+    if expected != actual_files:
+        raise ValueError("Active model artifact checksums do not match the registry pointer")
     return payload
 
 
