@@ -14,8 +14,15 @@ import PhoneVerification from '../components/auth/PhoneVerification';
 import ForgotPassword from '../components/auth/ForgotPassword';
 import ResetPassword from '../components/auth/ResetPassword';
 import Dashboard from '../pages/Dashboard';
+import Marketplace from '../pages/Marketplace';
+import ListingDetails from '../pages/ListingDetails';
+import CreateListing from '../pages/CreateListing';
+import EditListing from '../pages/EditListing';
+import MyListings from '../pages/MyListings';
+import MapDiscovery from '../pages/MapDiscovery';
 
 import '../styles/global.css';
+import '../styles/listings.css';
 
 function RoutePage() {
   const dispatch = useDispatch();
@@ -48,8 +55,14 @@ function RoutePage() {
           }
         >
           <Route index element={<Dashboard />} />
-          {/* additional nested routes like profile can be added here */}
+           <Route path="marketplace" element={<Marketplace />} />
+          <Route path="marketplace/map" element={<MapDiscovery />} />
+          <Route path="marketplace/:id" element={<ListingDetails />} />
+          <Route path="listings/new" element={<CreateListing />} />
+          <Route path="listings/:id/edit" element={<EditListing />} />
+          <Route path="my-listings" element={<MyListings />} />
         </Route>
+        
       </Routes>
     
   );
