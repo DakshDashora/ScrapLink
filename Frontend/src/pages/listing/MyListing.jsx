@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
-import { fetchListings } from '../features/listings/listingSlice';
-import ListingCard from '../components/listings/ListingCard';
+import { fetchListings } from '../../redux/slices/listingSlice';
+import ListingCard from '../../components/listing/ListingCard';
 
 const MyListings = () => {
   const dispatch = useDispatch();

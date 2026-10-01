@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchListings } from '../features/listings/listingSlice';
-import SearchFilters from '../components/listings/SearchFilters';
-import ListingCard from '../components/listings/ListingCard';
-import Pagination from '../components/listings/Pagination';
+import { fetchListings } from '../../redux/slices/listingSlice';
+import SearchFilters from '../../components/listing/SearchFilters';
+import ListingCard from '../../components/listing/ListingCard';
+import Pagination from '../../components/listing/Pagination';
 
 const Marketplace = () => {
   const dispatch = useDispatch();
@@ -47,7 +47,7 @@ const Marketplace = () => {
 };
 
 // helper so setPage action gets imported
-import { setPage } from '../features/listings/listingSlice';
+import { setPage } from '../../redux/slices/listingSlice';
 
 const PaginationWithDispatch = ({ page, total, pageSize, onPageChange }) => {
   const dispatch = useDispatch();

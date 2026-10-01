@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchListingById } from '../features/listings/listingSlice';
-import ListingForm from '../components/listings/ListingForm';
-import ImageUploader from '../components/listings/ImageUploader';
+import { fetchListingById } from '../../redux/slices/listingSlice';
+import ListingForm from '../../components/listing/ListingForm';
+import ImageUploader from '../../components/listing/ImageUploader';
 
 const EditListing = () => {
   const { id } = useParams();
