@@ -14,15 +14,15 @@ import PhoneVerification from '../components/auth/PhoneVerification';
 import ForgotPassword from '../components/auth/ForgotPassword';
 import ResetPassword from '../components/auth/ResetPassword';
 import Dashboard from '../pages/Dashboard';
-import Marketplace from '../pages/Marketplace';
-import ListingDetails from '../pages/ListingDetails';
-import CreateListing from '../pages/CreateListing';
-import EditListing from '../pages/EditListing';
-import MyListings from '../pages/MyListings';
-import MapDiscovery from '../pages/MapDiscovery';
+import Marketplace from '../pages/listing/Marketplace';
+import ListingDetails from '../pages/listing/ListingDetails';
+import CreateListing from '../pages/listing/CreateListing';
+import EditListing from '../pages/listing/EditListing';
+import MyListings from '../pages/listing/MyListing';
+import MapDiscovery from '../pages/listing/MapDiscovery';
 
 import '../styles/global.css';
-import '../styles/listings.css';
+import '../styles/listing.css';
 
 function RoutePage() {
   const dispatch = useDispatch();

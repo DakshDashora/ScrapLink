@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { uploadListingMedia } from '../../features/listings/listingSlice';
+import { uploadListingMedia } from '../../redux/slices/listingSlice';
 
 const ImageUploader = ({ listingId }) => {
   const dispatch = useDispatch();

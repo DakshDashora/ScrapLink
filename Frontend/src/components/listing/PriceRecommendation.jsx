@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { predictPrice, clearPrediction } from '../../features/listings/listingSlice';
+import { predictPrice, clearPrediction } from '../../redux/slices/listingSlice';
 
 const PriceRecommendation = ({ listing }) => {
   const dispatch = useDispatch();

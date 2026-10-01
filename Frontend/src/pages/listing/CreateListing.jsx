@@ -1,4 +1,4 @@
-import ListingForm from '../components/listings/ListingForm';
+import ListingForm from '../../components/listing/ListingForm';
 
 const CreateListing = () => (
   <div className="page-container">

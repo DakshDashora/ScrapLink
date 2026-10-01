@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { setFilters, resetFilters } from '../../features/listings/listingSlice';
+import { setFilters, resetFilters } from '../../redux/slices/listingSlice';
 
 const SearchFilters = ({ categories = [] }) => {
   const dispatch = useDispatch();

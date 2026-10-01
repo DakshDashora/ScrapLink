@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   createListing,
   updateListing,
-} from '../../features/listings/listingSlice';
+} from '../../redux/slices/listingSlice';
 
 const empty = {
   category_id: '',

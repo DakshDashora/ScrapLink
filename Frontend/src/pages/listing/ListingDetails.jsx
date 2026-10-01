@@ -5,8 +5,8 @@ import {
   fetchListingById,
   deleteListing,
   clearCurrent,
-} from '../features/listings/listingSlice';
-import PriceRecommendation from '../components/listings/PriceRecommendation';
+} from '../../redux/slices/listingSlice';
+import PriceRecommendation from '../../components/listing/PriceRecommendation';
 import MapView from '../../components/map/MapView';
 
 const ListingDetails = () => {

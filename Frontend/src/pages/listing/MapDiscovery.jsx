@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchMapListings } from '../features/listings/listingSlice';
-import MapView from '../components/map/MapView';
-import ListingCard from '../components/listings/ListingCard';
+import { fetchMapListings } from '../../redux/slices/listingSlice';
+import MapView from '../../components/map/MapView';
+import ListingCard from '../../components/listing/ListingCard';
 
 const MapDiscovery = () => {
   const dispatch = useDispatch();

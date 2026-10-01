@@ -3,13 +3,12 @@ import axiosInstance from '../../api/axiosConfig';
 
 // ---------------- Thunks ----------------
 
-// List + search + filter + paginate
 export const fetchListings = createAsyncThunk(
   'listings/fetchAll',
   async (params = {}, { rejectWithValue }) => {
     try {
       const { data } = await axiosInstance.get('/api/listings', { params });
-      return data; // { items, total, page, page_size }
+      return data;
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
     }
@@ -74,7 +73,7 @@ export const uploadListingMedia = createAsyncThunk(
         `/api/listings/${listingId}/media`,
         formData
       );
-      return data; // media record with file_url
+      return data;
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
     }
@@ -86,7 +85,7 @@ export const fetchMapListings = createAsyncThunk(
   async (params = {}, { rejectWithValue }) => {
     try {
       const { data } = await axiosInstance.get('/api/listings/map', { params });
-      return data; // array of markers
+      return data;
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
     }
@@ -98,7 +97,7 @@ export const predictPrice = createAsyncThunk(
   async (payload, { rejectWithValue }) => {
     try {
       const { data } = await axiosInstance.post('/api/predict-price', payload);
-      return data; // { recommended_price, price_band, explanation }
+      return data;
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
     }
@@ -159,7 +158,6 @@ const listingSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      // fetchListings
       .addCase(fetchListings.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -176,7 +174,6 @@ const listingSlice = createSlice({
         state.error = action.payload?.detail || 'Failed to load listings';
       })
 
-      // fetchListingById
       .addCase(fetchListingById.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -191,7 +188,6 @@ const listingSlice = createSlice({
         state.error = action.payload?.detail || 'Failed to load listing';
       })
 
-      // createListing
       .addCase(createListing.pending, (state) => {
         state.isSaving = true;
         state.error = null;
@@ -205,7 +201,6 @@ const listingSlice = createSlice({
         state.error = action.payload?.detail || 'Failed to create listing';
       })
 
-      // updateListing
       .addCase(updateListing.pending, (state) => {
         state.isSaving = true;
         state.error = null;
@@ -223,12 +218,10 @@ const listingSlice = createSlice({
         state.error = action.payload?.detail || 'Failed to update listing';
       })
 
-      // deleteListing
       .addCase(deleteListing.fulfilled, (state, action) => {
         state.items = state.items.filter((l) => l.listing_id !== action.payload);
       })
 
-      // upload media
       .addCase(uploadListingMedia.pending, (state) => {
         state.isUploading = true;
         state.error = null;
@@ -244,7 +237,6 @@ const listingSlice = createSlice({
         state.error = action.payload?.detail || 'Upload failed';
       })
 
-      // map
       .addCase(fetchMapListings.pending, (state) => {
         state.isLoading = true;
       })
@@ -257,7 +249,6 @@ const listingSlice = createSlice({
         state.error = action.payload?.detail || 'Failed to load map data';
       })
 
-      // prediction
       .addCase(predictPrice.pending, (state) => {
         state.isLoading = true;
         state.error = null;
