@@ -1,19 +1,26 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { setFilters, resetFilters } from '../../redux/slices/listingSlice';
+import { useEffect } from 'react';
+import { setFilters, resetFilters } from '../../features/listings/listingSlice';
+import { fetchCategories } from '../../features/categories/categorySlice';
 
-const SearchFilters = ({ categories = [] }) => {
+const SearchFilters = () => {
   const dispatch = useDispatch();
   const filters = useSelector((s) => s.listings.filters);
+  const categories = useSelector((s) => s.categories.items);
 
-  const update = (key, value) => dispatch(setFilters({ [key]: value }));
+  useEffect(() => {
+    if (categories.length === 0) dispatch(fetchCategories());
+  }, [dispatch, categories.length]);
+
+  const update = (k, v) => dispatch(setFilters({ [k]: v }));
 
   return (
     <div className="search-filters">
       <input
         type="text"
         placeholder="Search material..."
-        value={filters.q}
-        onChange={(e) => update('q', e.target.value)}
+        value={filters.material_name}
+        onChange={(e) => update('material_name', e.target.value)}
       />
 
       <select
@@ -22,7 +29,7 @@ const SearchFilters = ({ categories = [] }) => {
       >
         <option value="">All Categories</option>
         {categories.map((c) => (
-          <option key={c.category_id} value={c.category_id}>
+          <option key={c.id || c.category_id} value={c.id || c.category_id}>
             {c.name}
           </option>
         ))}
@@ -30,13 +37,13 @@ const SearchFilters = ({ categories = [] }) => {
 
       <input
         type="number"
-        placeholder="Min Price"
+        placeholder="Min ₹"
         value={filters.min_price}
         onChange={(e) => update('min_price', e.target.value)}
       />
       <input
         type="number"
-        placeholder="Max Price"
+        placeholder="Max ₹"
         value={filters.max_price}
         onChange={(e) => update('max_price', e.target.value)}
       />
@@ -47,22 +54,27 @@ const SearchFilters = ({ categories = [] }) => {
         onChange={(e) => update('min_quantity', e.target.value)}
       />
 
-      <select
-        value={filters.availability_status}
-        onChange={(e) => update('availability_status', e.target.value)}
-      >
-        <option value="Active">Active</option>
-        <option value="">All Statuses</option>
-        <option value="Reserved">Reserved</option>
-        <option value="Sold">Sold</option>
-        <option value="Closed">Closed</option>
+      <select value={filters.unit} onChange={(e) => update('unit', e.target.value)}>
+        <option value="">Any Unit</option>
+        <option value="kg">kg</option>
+        <option value="tonne">tonne</option>
+        <option value="unit">unit</option>
+        <option value="meter">meter</option>
+        <option value="liter">liter</option>
       </select>
 
+      <input
+        type="text"
+        placeholder="City"
+        value={filters.city}
+        onChange={(e) => update('city', e.target.value)}
+      />
+
       <select
-        value={`${filters.sort_by}:${filters.sort_dir}`}
+        value={`${filters.sort_by}:${filters.sort_order}`}
         onChange={(e) => {
-          const [by, dir] = e.target.value.split(':');
-          dispatch(setFilters({ sort_by: by, sort_dir: dir }));
+          const [by, order] = e.target.value.split(':');
+          dispatch(setFilters({ sort_by: by, sort_order: order }));
         }}
       >
         <option value="created_at:desc">Newest First</option>
@@ -72,7 +84,7 @@ const SearchFilters = ({ categories = [] }) => {
         <option value="quantity:desc">Quantity: High → Low</option>
       </select>
 
-      <button onClick={() => dispatch(resetFilters())} className="btn-reset">
+      <button className="btn-reset" onClick={() => dispatch(resetFilters())}>
         Reset
       </button>
     </div>
