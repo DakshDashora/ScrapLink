@@ -1,10 +1,7 @@
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import {
-  createListing,
-  updateListing,
-} from '../../redux/slices/listingSlice';
+import { createListing, updateListing } from '../../features/listings/listingSlice';
 
 const empty = {
   category_id: '',
@@ -24,42 +21,48 @@ const empty = {
   },
 };
 
-const ListingForm = ({ initial = empty, isEdit = false }) => {
+const ListingForm = ({ initial, isEdit = false }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { isSaving, error } = useSelector((s) => s.listings);
-  const [form, setForm] = useState({ ...empty, ...initial });
+  const categories = useSelector((s) => s.categories.items);
 
-  const set = (key, value) =>
-    setForm((f) => ({ ...f, [key]: value }));
+  const [form, setForm] = useState(() => ({
+    ...empty,
+    ...initial,
+    location: { ...empty.location, ...(initial?.location || {}) },
+  }));
 
-  const setLocation = (key, value) =>
-    setForm((f) => ({ ...f, location: { ...f.location, [key]: value } }));
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const setLoc = (k, v) => setForm((f) => ({ ...f, location: { ...f.location, [k]: v } }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     const payload = {
-      ...form,
+      category_id: form.category_id,
+      material_name: form.material_name,
+      grade: form.grade,
+      description: form.description,
       quantity: Number(form.quantity),
+      unit: form.unit,
       asking_price: form.asking_price ? Number(form.asking_price) : null,
       location: {
-        ...form.location,
-        latitude: form.location.latitude
-          ? Number(form.location.latitude)
-          : null,
-        longitude: form.location.longitude
-          ? Number(form.location.longitude)
-          : null,
+        address: form.location.address,
+        city: form.location.city,
+        state: form.location.state,
+        latitude: form.location.latitude ? Number(form.location.latitude) : null,
+        longitude: form.location.longitude ? Number(form.location.longitude) : null,
       },
     };
+    if (isEdit) payload.availability_status = form.availability_status;
 
     const action = isEdit
-      ? updateListing({ id: initial.listing_id, payload })
+      ? updateListing({ id: initial.id, payload })
       : createListing(payload);
 
-    const result = await dispatch(action).unwrap().catch(() => null);
-    if (result) {
-      navigate(isEdit ? `/marketplace/${result.listing_id}` : '/my-listings');
+    const res = await dispatch(action).unwrap().catch(() => null);
+    if (res) {
+      navigate(isEdit ? `/marketplace/${res.id}` : `/seller/listings/${res.id}/edit`);
     }
   };
 
@@ -79,30 +82,30 @@ const ListingForm = ({ initial = empty, isEdit = false }) => {
         </label>
 
         <label>
-          Category
-          <input
-            type="text"
-            placeholder="Category ID"
+          Category *
+          <select
             value={form.category_id}
             onChange={(e) => set('category_id', e.target.value)}
-          />
+            required
+          >
+            <option value="">-- Select --</option>
+            {categories.map((c) => (
+              <option key={c.id || c.category_id} value={c.id || c.category_id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label>
           Grade / Quality
-          <input
-            type="text"
-            value={form.grade}
-            onChange={(e) => set('grade', e.target.value)}
-          />
+          <input type="text" value={form.grade} onChange={(e) => set('grade', e.target.value)} />
         </label>
 
         <label>
           Quantity *
           <input
-            type="number"
-            min="0"
-            step="any"
+            type="number" min="0" step="any"
             value={form.quantity}
             onChange={(e) => set('quantity', e.target.value)}
             required
@@ -115,32 +118,34 @@ const ListingForm = ({ initial = empty, isEdit = false }) => {
             <option value="kg">kg</option>
             <option value="tonne">tonne</option>
             <option value="unit">unit</option>
+            <option value="meter">meter</option>
+            <option value="liter">liter</option>
           </select>
         </label>
 
         <label>
           Asking Price (₹)
           <input
-            type="number"
-            min="0"
-            step="any"
+            type="number" min="0" step="any"
             value={form.asking_price}
             onChange={(e) => set('asking_price', e.target.value)}
           />
         </label>
 
-        <label>
-          Availability
-          <select
-            value={form.availability_status}
-            onChange={(e) => set('availability_status', e.target.value)}
-          >
-            <option value="Active">Active</option>
-            <option value="Reserved">Reserved</option>
-            <option value="Sold">Sold</option>
-            <option value="Closed">Closed</option>
-          </select>
-        </label>
+        {isEdit && (
+          <label>
+            Availability
+            <select
+              value={form.availability_status}
+              onChange={(e) => set('availability_status', e.target.value)}
+            >
+              <option value="Active">Active</option>
+              <option value="Reserved">Reserved</option>
+              <option value="Sold">Sold</option>
+              <option value="Closed">Closed</option>
+            </select>
+          </label>
+        )}
       </div>
 
       <label className="full">
@@ -155,47 +160,25 @@ const ListingForm = ({ initial = empty, isEdit = false }) => {
       <fieldset>
         <legend>Pickup Location</legend>
         <div className="form-grid">
-          <label>
-            Address
-            <input
-              type="text"
-              value={form.location.address}
-              onChange={(e) => setLocation('address', e.target.value)}
-            />
+          <label>Address
+            <input type="text" value={form.location.address}
+              onChange={(e) => setLoc('address', e.target.value)} />
           </label>
-          <label>
-            City
-            <input
-              type="text"
-              value={form.location.city}
-              onChange={(e) => setLocation('city', e.target.value)}
-            />
+          <label>City
+            <input type="text" value={form.location.city}
+              onChange={(e) => setLoc('city', e.target.value)} />
           </label>
-          <label>
-            State
-            <input
-              type="text"
-              value={form.location.state}
-              onChange={(e) => setLocation('state', e.target.value)}
-            />
+          <label>State
+            <input type="text" value={form.location.state}
+              onChange={(e) => setLoc('state', e.target.value)} />
           </label>
-          <label>
-            Latitude
-            <input
-              type="number"
-              step="any"
-              value={form.location.latitude}
-              onChange={(e) => setLocation('latitude', e.target.value)}
-            />
+          <label>Latitude
+            <input type="number" step="any" value={form.location.latitude}
+              onChange={(e) => setLoc('latitude', e.target.value)} />
           </label>
-          <label>
-            Longitude
-            <input
-              type="number"
-              step="any"
-              value={form.location.longitude}
-              onChange={(e) => setLocation('longitude', e.target.value)}
-            />
+          <label>Longitude
+            <input type="number" step="any" value={form.location.longitude}
+              onChange={(e) => setLoc('longitude', e.target.value)} />
           </label>
         </div>
       </fieldset>
@@ -206,7 +189,7 @@ const ListingForm = ({ initial = empty, isEdit = false }) => {
         <button type="submit" className="btn-primary" disabled={isSaving}>
           {isSaving ? 'Saving…' : isEdit ? 'Update Listing' : 'Create Listing'}
         </button>
-        <button type="button" onClick={() => navigate(-1)} className="btn-secondary">
+        <button type="button" className="btn-secondary" onClick={() => navigate(-1)}>
           Cancel
         </button>
       </div>

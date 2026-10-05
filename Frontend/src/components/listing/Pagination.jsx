@@ -1,40 +1,29 @@
-const Pagination = ({ page, total, pageSize, onPageChange }) => {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  if (totalPages <= 1) return null;
+const Pagination = ({ page, pages, onChange }) => {
+  if (!pages || pages <= 1) return null;
 
-  const pages = [];
-  for (let i = 1; i <= totalPages; i++) {
-    if (i === 1 || i === totalPages || Math.abs(i - page) <= 1) {
-      pages.push(i);
-    } else if (pages[pages.length - 1] !== '...') {
-      pages.push('...');
-    }
+  const list = [];
+  for (let i = 1; i <= pages; i++) {
+    if (i === 1 || i === pages || Math.abs(i - page) <= 1) list.push(i);
+    else if (list[list.length - 1] !== '...') list.push('...');
   }
 
   return (
     <div className="pagination">
-      <button disabled={page === 1} onClick={() => onPageChange(page - 1)}>
-        Prev
-      </button>
-      {pages.map((p, i) =>
+      <button disabled={page === 1} onClick={() => onChange(page - 1)}>Prev</button>
+      {list.map((p, i) =>
         p === '...' ? (
           <span key={i} className="ellipsis">…</span>
         ) : (
           <button
             key={i}
             className={p === page ? 'active' : ''}
-            onClick={() => onPageChange(p)}
+            onClick={() => onChange(p)}
           >
             {p}
           </button>
         )
       )}
-      <button
-        disabled={page === totalPages}
-        onClick={() => onPageChange(page + 1)}
-      >
-        Next
-      </button>
+      <button disabled={page === pages} onClick={() => onChange(page + 1)}>Next</button>
     </div>
   );
 };

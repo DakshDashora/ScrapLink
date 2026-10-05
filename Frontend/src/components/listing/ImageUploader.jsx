@@ -1,38 +1,76 @@
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { uploadListingMedia } from '../../redux/slices/listingSlice';
+import {
+  uploadListingMedia,
+  deleteListingMedia,
+  setPrimaryMedia,
+} from '../../features/listings/listingSlice';
 
-const ImageUploader = ({ listingId }) => {
+const ImageUploader = ({ listingId, media = [] }) => {
   const dispatch = useDispatch();
   const { isUploading, error } = useSelector((s) => s.listings);
-  const [previews, setPreviews] = useState([]);
+  const [file, setFile] = useState(null);
+  const [isPrimary, setIsPrimary] = useState(false);
 
-  const handleFiles = async (files) => {
-    for (const file of files) {
-      const url = URL.createObjectURL(file);
-      setPreviews((p) => [...p, { file, url }]);
-      // eslint-disable-next-line no-await-in-loop
-      await dispatch(uploadListingMedia({ listingId, file }));
-    }
+  const handleUpload = async () => {
+    if (!file) return;
+    await dispatch(uploadListingMedia({ listingId, file, isPrimary })).unwrap().catch(() => {});
+    setFile(null);
+    setIsPrimary(false);
   };
 
   return (
     <div className="image-uploader">
-      <label className="upload-drop">
+      <div className="upload-controls">
         <input
           type="file"
-          accept="image/*"
-          multiple
-          onChange={(e) => handleFiles(Array.from(e.target.files))}
+          accept="image/jpeg,image/png,image/webp"
+          onChange={(e) => setFile(e.target.files[0])}
         />
-        <span>{isUploading ? 'Uploading…' : 'Click to upload images'}</span>
-      </label>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={isPrimary}
+            onChange={(e) => setIsPrimary(e.target.checked)}
+          />
+          Set as primary image
+        </label>
+        <button
+          className="btn-primary"
+          onClick={handleUpload}
+          disabled={!file || isUploading}
+        >
+          {isUploading ? 'Uploading…' : 'Upload'}
+        </button>
+      </div>
 
       {error && <div className="error-message">{error}</div>}
 
-      <div className="previews">
-        {previews.map((p, i) => (
-          <img key={i} src={p.url} alt={`preview-${i}`} />
+      <div className="existing-images">
+        {media.map((m) => (
+          <div key={m.id} className={`media-item ${m.is_primary ? 'is-primary' : ''}`}>
+            <img src={m.file_url} alt="listing" />
+            {m.is_primary && <span className="primary-tag">Primary</span>}
+            <div className="media-actions">
+              {!m.is_primary && (
+                <button
+                  onClick={() =>
+                    dispatch(setPrimaryMedia({ listingId, mediaId: m.id }))
+                  }
+                >
+                  Set Primary
+                </button>
+              )}
+              <button
+                className="btn-danger-small"
+                onClick={() =>
+                  dispatch(deleteListingMedia({ listingId, mediaId: m.id }))
+                }
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         ))}
       </div>
     </div>

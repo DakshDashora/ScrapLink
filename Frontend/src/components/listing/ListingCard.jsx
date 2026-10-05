@@ -10,19 +10,30 @@ const PLACEHOLDER =
     </svg>`
   );
 
-const ListingCard = ({ listing }) => {
-  const image = listing.media?.[0]?.file_url || PLACEHOLDER;
-  const locationText =
+const ListingCard = ({ listing, sellerMode = false }) => {
+  const media = listing.media || [];
+  const primary = media.find((m) => m.is_primary) || media[0];
+  const image = primary?.file_url || PLACEHOLDER;
+
+  const loc =
     listing.location?.city ||
-    listing.location?.address ||
     listing.location?.state ||
+    listing.location?.address ||
     'Location N/A';
 
+  const price = listing.asking_price
+    ? `₹ ${Number(listing.asking_price).toLocaleString()}`
+    : 'Price on request';
+
+  const linkTo = sellerMode
+    ? `/seller/listings/${listing.id}/edit`
+    : `/marketplace/${listing.id}`;
+
   return (
-    <Link to={`/marketplace/${listing.listing_id}`} className="listing-card">
+    <Link to={linkTo} className="listing-card">
       <div className="listing-card-image">
         <img src={image} alt={listing.material_name} />
-        <span className={`status-badge status-${listing.availability_status?.toLowerCase()}`}>
+        <span className={`status-badge status-${(listing.availability_status || 'active').toLowerCase()}`}>
           {listing.availability_status}
         </span>
       </div>
@@ -30,14 +41,13 @@ const ListingCard = ({ listing }) => {
         <h3>{listing.material_name}</h3>
         {listing.grade && <p className="grade">Grade: {listing.grade}</p>}
         <p className="quantity">
-          {listing.quantity} {listing.unit}
+          {Number(listing.quantity).toLocaleString()} {listing.unit}
         </p>
-        <p className="price">
-          {listing.asking_price
-            ? `₹ ${Number(listing.asking_price).toLocaleString()}`
-            : 'Price on request'}
-        </p>
-        <p className="location">📍 {locationText}</p>
+        <p className="price">{price}</p>
+        <p className="location">📍 {loc}</p>
+        {sellerMode && (
+          <p className="seller-org">{listing.seller_org_name}</p>
+        )}
       </div>
     </Link>
   );
