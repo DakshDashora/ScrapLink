@@ -22,6 +22,12 @@ load_dotenv(BACKEND_DIR / ".env", override=False)
 
 ML_JOB_TOKEN = os.getenv("ML_JOB_TOKEN", "").strip()
 ML_DATABASE_URL = os.getenv("ML_DATABASE_URL", "").strip()
+ML_CLOUDINARY_CLOUD_NAME = os.getenv("ML_CLOUDINARY_CLOUD_NAME", "").strip()
+ML_CLOUDINARY_API_KEY = os.getenv("ML_CLOUDINARY_API_KEY", "").strip()
+ML_CLOUDINARY_API_SECRET = os.getenv("ML_CLOUDINARY_API_SECRET", "").strip()
+ML_CLOUDINARY_MODEL_FOLDER = os.getenv(
+    "ML_CLOUDINARY_MODEL_FOLDER", "scraplink/models"
+).strip().strip("/") or "scraplink/models"
 
 
 def _configured_float(name: str, default: float) -> float:
@@ -60,7 +66,6 @@ RAW_DIR = DATA_DIR / "raw"
 SCRAPMONSTER_DIR = RAW_DIR / "ScrapMonster"
 MCX_DIR = RAW_DIR / "MCX"
 YAHOO_RAW_DIR = RAW_DIR / "Yahoo"
-MODEL_REGISTRY_DIR = ML_DIR / "model_registry"
 MIN_SCRAP_HISTORY_DAYS = 30
 MIN_TRAINING_ROWS = 500
 PREDICTION_HORIZON_DAYS = 1

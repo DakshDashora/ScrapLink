@@ -1,6 +1,6 @@
 """Database models owned exclusively by the standalone ML pipeline."""
 
-from sqlalchemy import Column, Date, DateTime, Float, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.sql import func
 
 from .database import Base
@@ -67,3 +67,16 @@ class PipelineRun(Base):
     error_message = Column(Text, nullable=True)
     started_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class ModelVersion(Base):
+    __tablename__ = "ml_model_registry"
+
+    id = Column(Integer, primary_key=True)
+    version = Column(String(96), nullable=False, unique=True, index=True)
+    is_active = Column(Boolean, nullable=False, default=False, index=True)
+    artifact_public_ids = Column(JSON, nullable=False)
+    artifact_checksums = Column(JSON, nullable=False)
+    metrics = Column(JSON, nullable=False)
+    feature_schema = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

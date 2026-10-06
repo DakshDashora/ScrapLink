@@ -64,10 +64,11 @@ def health() -> HealthResponse:
 @app.post("/predict-price", response_model=PredictionResponse)
 def predict_price(
     request: PredictionRequest,
+    db: Session = Depends(get_db),
     _: None = Depends(require_job_token),
 ) -> PredictionResponse:
     try:
-        result = get_price_prediction(**request.model_dump(exclude_none=True))
+        result = get_price_prediction(**request.model_dump(exclude_none=True), db=db)
         return PredictionResponse(**result)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -205,7 +206,7 @@ def train(
         raise HTTPException(status_code=409, detail="Training is already running") from exc
     run = start_run(db, "train")
     try:
-        result = retrain(load_feature_dataframe(db))
+        result = retrain(load_feature_dataframe(db), db=db)
         finish_run(db, run, "succeeded", details=result, rows_written=0)
         return TrainingResponse(**result)
     except Exception as exc:
