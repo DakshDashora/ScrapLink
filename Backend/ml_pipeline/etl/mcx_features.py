@@ -79,6 +79,7 @@ def join_mcx_features(
             for column in MCX_FEATURE_COLUMNS:
                 left[column] = 0 if column == "has_mcx_history" else pd.NA
         else:
+            right = right.drop(columns="material")
             left = pd.merge_asof(
                 left,
                 right.sort_values("observation_date"),
