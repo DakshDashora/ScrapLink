@@ -4,7 +4,7 @@ import {
   uploadListingMedia,
   deleteListingMedia,
   setPrimaryMedia,
-} from '../../features/listings/listingSlice';
+} from '../../redux/slices/listingSlice';
 
 const ImageUploader = ({ listingId, media = [] }) => {
   const dispatch = useDispatch();

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchListingById } from '../../redux/slices/listingSlice';
+import { fetchListingById, clearCurrent } from '../../redux/slices/listingSlice';
 import ListingForm from '../../components/listing/ListingForm';
 import ImageUploader from '../../components/listing/ImageUploader';
 
@@ -12,6 +12,7 @@ const EditListing = () => {
 
   useEffect(() => {
     dispatch(fetchListingById(id));
+    return () => dispatch(clearCurrent());
   }, [dispatch, id]);
 
   if (isLoading || !current) return <div className="loading">Loading…</div>;
@@ -21,12 +22,7 @@ const EditListing = () => {
       <ListingForm initial={current} isEdit />
       <div className="upload-section">
         <h3>Listing Images</h3>
-        <ImageUploader listingId={current.listing_id} />
-        <div className="existing-images">
-          {current.media?.map((m) => (
-            <img key={m.media_id} src={m.file_url} alt="listing" />
-          ))}
-        </div>
+        <ImageUploader listingId={current.id} media={current.media} />
       </div>
     </div>
   );

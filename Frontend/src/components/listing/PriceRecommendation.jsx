@@ -3,19 +3,17 @@ import { predictPrice, clearPrediction } from '../../redux/slices/listingSlice';
 
 const PriceRecommendation = ({ listing }) => {
   const dispatch = useDispatch();
-  const { prediction, isLoading } = useSelector((s) => s.listings);
+  const { prediction, isLoading, error } = useSelector((s) => s.listings);
 
   const handlePredict = () => {
-    dispatch(
-      predictPrice({
-        category_id: listing.category_id,
-        material_name: listing.material_name,
-        grade: listing.grade,
-        quantity: Number(listing.quantity),
-        unit: listing.unit,
-        location: listing.location,
-      })
-    );
+    dispatch(predictPrice({
+      category_id: listing.category_id,
+      material_name: listing.material_name,
+      grade: listing.grade,
+      quantity: Number(listing.quantity),
+      unit: listing.unit,
+      location: listing.location,
+    }));
   };
 
   return (
@@ -24,11 +22,13 @@ const PriceRecommendation = ({ listing }) => {
         {isLoading ? 'Calculating…' : 'Get Price Recommendation'}
       </button>
 
+      {error && <div className="error-message">{error}</div>}
+
       {prediction && (
         <div className="prediction-box">
           <h4>Estimated Recommended Price</h4>
           <p className="recommended-value">
-            ₹ {Number(prediction.recommended_price).toLocaleString()}
+            ₹ {Number(prediction.recommended_price ?? prediction.price).toLocaleString()}
             {prediction.unit ? ` / ${prediction.unit}` : ''}
           </p>
           {prediction.price_band && (
@@ -37,8 +37,8 @@ const PriceRecommendation = ({ listing }) => {
             </p>
           )}
           <p className="disclaimer">
-            ⚠ This is an AI-assisted estimate based on market reference data,
-            not a guaranteed transaction price.
+            ⚠ AI-assisted estimate based on market reference data — not a
+            guaranteed transaction price.
           </p>
           <button className="link-button" onClick={() => dispatch(clearPrediction())}>
             Dismiss

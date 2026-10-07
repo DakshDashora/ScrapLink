@@ -6,20 +6,21 @@ import ListingCard from '../../components/listing/ListingCard';
 
 const MapDiscovery = () => {
   const dispatch = useDispatch();
-  const { mapMarkers, isLoading } = useSelector((s) => s.listings);
+  const { mapMarkers, isLoading, error } = useSelector((s) => s.listings);
 
   useEffect(() => {
-    dispatch(fetchMapListings({ availability_status: 'Active' }));
+    dispatch(fetchMapListings({ status: 'Active' }));
   }, [dispatch]);
 
   return (
     <div className="map-page">
       <h2>Map Discovery</h2>
+      {error && <div className="error-message">{error}</div>}
       {isLoading && <div className="loading">Loading map…</div>}
       <MapView markers={mapMarkers} height="500px" />
       <div className="map-list-preview">
         {mapMarkers.slice(0, 6).map((m) => (
-          <ListingCard key={m.listing_id} listing={m} />
+          <ListingCard key={m.id} listing={m} />
         ))}
       </div>
     </div>

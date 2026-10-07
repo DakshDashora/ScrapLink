@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { logout } from '../../features/auth/authSlice';
+import { logout } from '../../redux/slices/authSlices';
 
 const DashboardLayout = () => {
   const dispatch = useDispatch();

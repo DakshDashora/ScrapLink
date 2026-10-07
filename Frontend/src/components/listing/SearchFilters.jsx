@@ -1,7 +1,7 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useEffect } from 'react';
-import { setFilters, resetFilters } from '../../features/listings/listingSlice';
-import { fetchCategories } from '../../features/categories/categorySlice';
+import { setFilters, resetFilters } from '../../redux/slices/listingSlice';
+import { fetchCategories } from '../../redux/slices/categorySlice';
 
 const SearchFilters = () => {
   const dispatch = useDispatch();
