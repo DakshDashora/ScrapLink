@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { createListing, updateListing } from '../../features/listings/listingSlice';
+import { createListing, updateListing } from '../../redux/slices/listingSlice';
 
 const empty = {
   category_id: '',
