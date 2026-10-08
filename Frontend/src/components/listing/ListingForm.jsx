@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { Link,useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { fetchCategories } from '../../redux/slices/categorySlice';
 import { createListing, updateListing } from '../../redux/slices/listingSlice';
 
 const empty = {
@@ -35,6 +37,10 @@ const ListingForm = ({ initial, isEdit = false }) => {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setLoc = (k, v) => setForm((f) => ({ ...f, location: { ...f.location, [k]: v } }));
+
+  useEffect(() => {
+  if (categories.length === 0) dispatch(fetchCategories());
+}, [dispatch, categories.length]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -81,21 +87,33 @@ const ListingForm = ({ initial, isEdit = false }) => {
           />
         </label>
 
-        <label>
-          Category *
-          <select
-            value={form.category_id}
-            onChange={(e) => set('category_id', e.target.value)}
-            required
-          >
-            <option value="">-- Select --</option>
-            {categories.map((c) => (
-              <option key={c.id || c.category_id} value={c.id || c.category_id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
+<label>
+  Category *
+  <select
+    value={form.category_id}
+    onChange={(e) => set('category_id', e.target.value)}
+    required
+    disabled={categories.length === 0}
+  >
+    <option value="">
+      {categories.length === 0 ? 'No categories available' : '-- Select --'}
+    </option>
+    {categories.map((c) => {
+      const id = c.id || c.category_id || c._id;
+      const name = c.name || c.category_name || c.title;
+      return (
+        <option key={id} value={id}>
+          {name}
+        </option>
+      );
+    })}
+  </select>
+
+  {/* TEMP DEBUG — remove after it works */}
+  <small style={{ color: '#94a3b8', fontSize: '0.7rem' }}>
+    Loaded: {categories.length} categories
+  </small>
+</label>
 
         <label>
           Grade / Quality
@@ -183,7 +201,20 @@ const ListingForm = ({ initial, isEdit = false }) => {
         </div>
       </fieldset>
 
-      {error && <div className="error-message">{error}</div>}
+      {error && (
+  <div className="error-message">
+    {error}
+    {typeof error === 'string' &&
+      error.toLowerCase().includes('organization') && (
+        <>
+          {' '}
+          <Link to="/organization/new" className="inline-link">
+            → Create Organization
+          </Link>
+        </>
+      )}
+  </div>
+)}
 
       <div className="form-actions">
         <button type="submit" className="btn-primary" disabled={isSaving}>

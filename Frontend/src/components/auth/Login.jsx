@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link, useNavigate } from 'react-router-dom';
 import { loginUser, clearError } from '../../redux/slices/authSlices';
+import { hydrateFromStorage, orgStorageKey } from '../../redux/slices/organisationSlice';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -9,10 +10,18 @@ const Login = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { isLoading, error, token } = useSelector((s) => s.auth);
+  const user = useSelector((s) => s.auth.user);
 
   useEffect(() => {
     if (token) navigate('/dashboard');
   }, [token, navigate]);
+
+  useEffect(() => {
+  if (user?.user_id) {
+    const storedOrgId = localStorage.getItem(orgStorageKey(user.user_id));
+    if (storedOrgId) dispatch(hydrateFromStorage(storedOrgId));
+  }
+}, [user?.user_id, dispatch]);
 
   const handleSubmit = (e) => {
     e.preventDefault();

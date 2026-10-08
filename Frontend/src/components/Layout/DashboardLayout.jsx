@@ -32,6 +32,7 @@ const DashboardLayout = () => {
           {(role === 'Seller' || role === 'Admin') && (
             <>
               <li className="section-label">Seller</li>
+              <li><NavLink to="/organization/new">Create Organization</NavLink></li>
               <li><NavLink to="/seller/listings">My Listings</NavLink></li>
               <li><NavLink to="/seller/listings/new">Create Listing</NavLink></li>
             </>

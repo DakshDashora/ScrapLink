@@ -7,7 +7,10 @@ export const fetchCategories = createAsyncThunk(
     try {
       const { data } = await axiosInstance.get('/categories/');
       // Backend returns array directly OR { items: [...] }
-      const list = Array.isArray(data) ? data : data.items || [];
+      const list = Array.isArray(data)
+        ? data
+        : data.categories || data.items || data.data || [];
+      
       return list;
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
