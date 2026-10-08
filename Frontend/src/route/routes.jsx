@@ -23,6 +23,7 @@ import EditListing from '../pages/seller/EditListing';
 import Marketplace from '../pages/buyer/MarketPlace';
 import ListingDetails from '../pages/buyer/ListingDetails';
 import MapDiscovery from '../pages/buyer/MapDiscovery';
+import CreateOrganization from '../pages/organisation/Createorganisation';
 
 import '../styles/global.css';
 import '../styles/listing.css';
@@ -35,51 +36,59 @@ function App() {
   }, [dispatch]);
 
   return (
-    
-      <Routes>
-        {/* Public auth */}
-        <Route path="/" element={<Landing />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/verify-email" element={<EmailVerification />} />
-        <Route path="/verify-phone" element={<PhoneVerification />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* Protected dashboard shell */}
-        <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
-          <Route path="dashboard" element={<Dashboard />} />
+    <Routes>
+      {/* Public auth */}
+      <Route path="/" element={<Landing />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/verify-email" element={<EmailVerification />} />
+      <Route path="/verify-phone" element={<PhoneVerification />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
-          {/* Seller routes */}
-          <Route
-            path="seller/listings"
-            element={<RoleRoute allow={['Seller', 'Admin']}><MyListings /></RoleRoute>}
-          />
-          <Route
-            path="seller/listings/new"
-            element={<RoleRoute allow={['Seller', 'Admin']}><CreateListing /></RoleRoute>}
-          />
-          <Route
-            path="seller/listings/:id/edit"
-            element={<RoleRoute allow={['Seller', 'Admin']}><EditListing /></RoleRoute>}
-          />
+      {/* Protected dashboard shell */}
+      <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
+        <Route path="dashboard" element={<Dashboard />} />
 
-          {/* Buyer routes */}
-          <Route
-            path="marketplace"
-            element={<RoleRoute allow={['Buyer', 'Admin']}><Marketplace /></RoleRoute>}
-          />
-          <Route
-            path="marketplace/map"
-            element={<RoleRoute allow={['Buyer', 'Admin']}><MapDiscovery /></RoleRoute>}
-          />
-          <Route
-            path="marketplace/:id"
-            element={<RoleRoute allow={['Buyer', 'Admin']}><ListingDetails /></RoleRoute>}
-          />
-        </Route>
-      </Routes>
-    
+        {/* Seller routes */}
+        <Route
+          path="seller/listings"
+          element={<RoleRoute allow={['Seller', 'Admin']}><MyListings /></RoleRoute>}
+        />
+        <Route
+          path="seller/listings/new"
+          element={<RoleRoute allow={['Seller', 'Admin']}><CreateListing /></RoleRoute>}
+        />
+        <Route
+          path="seller/listings/:id/edit"
+          element={<RoleRoute allow={['Seller', 'Admin']}><EditListing /></RoleRoute>}
+        />
+
+        {/* Buyer routes */}
+        <Route
+          path="marketplace"
+          element={<RoleRoute allow={['Buyer', 'Admin']}><Marketplace /></RoleRoute>}
+        />
+        <Route
+          path="marketplace/map"
+          element={<RoleRoute allow={['Buyer', 'Admin']}><MapDiscovery /></RoleRoute>}
+        />
+        <Route
+          path="marketplace/:id"
+          element={<RoleRoute allow={['Buyer', 'Admin']}><ListingDetails /></RoleRoute>}
+        />
+      </Route>
+      <Route
+        path="organization/new"
+        element={
+          <RoleRoute allow={['Seller', 'Admin']}>
+            <CreateOrganization />
+          </RoleRoute>
+        }
+      />
+    </Routes>
+
   );
 }
 

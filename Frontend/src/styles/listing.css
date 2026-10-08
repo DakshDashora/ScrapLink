@@ -281,3 +281,16 @@
 }
 .action-card h3 { color: #1e3c72; margin-bottom: 0.35rem; }
 .action-card p { font-size: 0.85rem; color: #64748b; }
+
+
+.inline-link {
+  color: #1e3c72;
+  font-weight: 600;
+  text-decoration: underline;
+  margin-left: 0.25rem;
+}
+.form-intro {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
