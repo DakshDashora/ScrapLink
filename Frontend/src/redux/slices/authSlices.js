@@ -1,6 +1,40 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axiosInstance from '../../api/axiosConfig';
 
+// ---------------- Helpers ----------------
+
+/**
+ * Normalize a user object coming from any endpoint.
+ * Login returns:  { user_id, full_name, email, role, email_verified, phone_verified }
+ * /auth/me may return: { id, name, email, role, ... } — same fields under different keys.
+ * This function guarantees a consistent shape across the app.
+ */
+function normalizeUser(raw) {
+  if (!raw) return null;
+  return {
+    user_id: raw.user_id || raw.id || null,
+    full_name: raw.full_name || raw.name || '',
+    email: raw.email || '',
+    role: raw.role || null,
+    phone: raw.phone || null,
+    email_verified: !!raw.email_verified,
+    phone_verified: !!raw.phone_verified,
+    created_at: raw.created_at || null,
+  };
+}
+
+function extractError(payload, fallback) {
+  if (!payload) return fallback;
+  if (typeof payload === 'string') return payload;
+  if (payload.detail) {
+    if (typeof payload.detail === 'string') return payload.detail;
+    if (Array.isArray(payload.detail)) {
+      return payload.detail.map((d) => d.msg || JSON.stringify(d)).join(', ');
+    }
+  }
+  return fallback;
+}
+
 // ---------------- Thunks ----------------
 
 export const registerUser = createAsyncThunk(
@@ -9,7 +43,6 @@ export const registerUser = createAsyncThunk(
     try {
       const { data } = await axiosInstance.post('/auth/register', userData);
       return data;
-      // { id, full_name, email, phone, role, email_verified, phone_verified, created_at }
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
     }
@@ -22,8 +55,6 @@ export const loginUser = createAsyncThunk(
     try {
       const { data } = await axiosInstance.post('/auth/login', credentials);
       return data;
-      // { access_token, token_type, user_id, email, role,
-      //   email_verified, phone_verified, full_name }
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
     }
@@ -54,22 +85,18 @@ export const getVerificationStatus = createAsyncThunk(
   }
 );
 
-// Resend / send OTP (used by both email & phone pages)
-// payload: { type: 'EMAIL_VERIFICATION' | 'PHONE_VERIFICATION', email?, phone? }
 export const resendOtp = createAsyncThunk(
   'auth/resendOtp',
   async (payload, { rejectWithValue }) => {
     try {
       const { data } = await axiosInstance.post('/auth/otp/resend', payload);
-      return data; // { message, expires_in }
+      return data;
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
     }
   }
 );
 
-// Verify OTP for email or phone
-// payload: { type, email?, phone?, otp }
 export const verifyOtp = createAsyncThunk(
   'auth/verifyOtp',
   async (payload, { rejectWithValue }) => {
@@ -82,7 +109,6 @@ export const verifyOtp = createAsyncThunk(
   }
 );
 
-// Step 1 of password reset: request OTP via email
 export const requestPasswordReset = createAsyncThunk(
   'auth/requestPasswordReset',
   async ({ email }, { rejectWithValue }) => {
@@ -98,7 +124,6 @@ export const requestPasswordReset = createAsyncThunk(
   }
 );
 
-// Step 2 of password reset: confirm with OTP + new password
 export const confirmPasswordReset = createAsyncThunk(
   'auth/confirmPasswordReset',
   async ({ email, otp, new_password }, { rejectWithValue }) => {
@@ -117,11 +142,11 @@ export const confirmPasswordReset = createAsyncThunk(
 // ---------------- Slice ----------------
 
 const initialState = {
-  user: null,                    // logged-in user
+  user: null,
   token: localStorage.getItem('accessToken') || null,
 
-  // used during the register → email → phone verification flow
-  pendingUser: null,             // { id, full_name, email, phone, role, ... }
+  // signup flow
+  pendingUser: null,
   emailVerified: false,
   phoneVerified: false,
 
@@ -130,7 +155,7 @@ const initialState = {
   otpSent: false,
   otpExpiresIn: null,
   error: null,
-  passwordResetRequestedFor: null, // email remembered between the two pages
+  passwordResetRequestedFor: null,
 };
 
 const authSlice = createSlice({
@@ -170,7 +195,6 @@ const authSlice = createSlice({
         state.pendingUser = action.payload;
         state.emailVerified = !!action.payload.email_verified;
         state.phoneVerified = !!action.payload.phone_verified;
-        // Backend auto-sends email OTP on register
         state.otpSent = true;
       })
       .addCase(registerUser.rejected, (state, action) => {
@@ -187,15 +211,10 @@ const authSlice = createSlice({
         state.isLoading = false;
         state.token = action.payload.access_token;
         localStorage.setItem('accessToken', action.payload.access_token);
-        state.user = {
-          user_id: action.payload.user_id,
-          email: action.payload.email,
-          role: action.payload.role,
-          full_name: action.payload.full_name,
-          email_verified: action.payload.email_verified,
-          phone_verified: action.payload.phone_verified,
-        };
-        // Clear the pending signup flow state
+
+        // Set a stub user so the UI has SOMETHING immediately.
+        // getCurrentUser will overwrite this with the full profile.
+        state.user = normalizeUser(action.payload);
         state.pendingUser = null;
       })
       .addCase(loginUser.rejected, (state, action) => {
@@ -209,12 +228,14 @@ const authSlice = createSlice({
       })
       .addCase(getCurrentUser.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.user = action.payload;
+        // Normalize regardless of endpoint shape (id vs user_id, name vs full_name)
+        state.user = normalizeUser(action.payload);
       })
       .addCase(getCurrentUser.rejected, (state, action) => {
         state.isLoading = false;
         state.error = extractError(action.payload, 'Failed to fetch user');
         state.token = null;
+        state.user = null;
         localStorage.removeItem('accessToken');
       })
 
@@ -294,19 +315,6 @@ const authSlice = createSlice({
       });
   },
 });
-
-// Backend returns 422 with { detail: [{msg}] } – unwrap nicely
-function extractError(payload, fallback) {
-  if (!payload) return fallback;
-  if (typeof payload === 'string') return payload;
-  if (payload.detail) {
-    if (typeof payload.detail === 'string') return payload.detail;
-    if (Array.isArray(payload.detail)) {
-      return payload.detail.map((d) => d.msg || JSON.stringify(d)).join(', ');
-    }
-  }
-  return fallback;
-}
 
 export const {
   logout,

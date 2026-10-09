@@ -5,12 +5,27 @@ const Dashboard = () => {
   const user = useSelector((s) => s.auth.user);
   const role = user?.role;
 
+  // Guard: don't render an empty shell while the profile is still loading
+  if (!user) {
+    return (
+      <div className="dashboard-home">
+        <div className="loading">Loading your profile…</div>
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-home">
-      <h2>Welcome back, {user?.full_name}</h2>
-      <p>Role: <strong>{role}</strong></p>
-      <p>Email: {user?.email} {user?.email_verified ? '✅' : '⚠'}</p>
-      <p>Phone: {user?.phone || '—'} {user?.phone_verified ? '✅' : '⚠'}</p>
+      <h2>Welcome back, {user.full_name || 'there'}</h2>
+      <p>Role: <strong>{role || '—'}</strong></p>
+      <p>
+        Email: {user.email || '—'}{' '}
+        {user.email_verified ? '✅' : '⚠'}
+      </p>
+      <p>
+        Phone: {user.phone || '—'}{' '}
+        {user.phone_verified ? '✅' : '⚠'}
+      </p>
 
       <div className="quick-actions">
         {(role === 'Seller' || role === 'Admin') && (
