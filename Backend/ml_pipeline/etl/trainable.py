@@ -78,7 +78,11 @@ def _feature_dictionary() -> dict[str, dict[str, str]]:
     return {
         name: {
             "datatype": "float",
-            "source": "ScrapMonster" if name.startswith("scrap_") or name in {"day_of_week", "month", "quarter"} else "MCX",
+            "source": (
+                "ScrapMonster"
+                if name.startswith("scrap_") or name in {"day_of_week", "month", "quarter", "has_scrap_history"}
+                else "MCX"
+            ),
             "formula": "Prior observations only; current target excluded",
             "availability": "Known before the prediction target",
         }

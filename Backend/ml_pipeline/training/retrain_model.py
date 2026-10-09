@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import make_pipeline
+from sqlalchemy.orm import Session
 
 from ..etl.pipeline_config import (
     FEATURE_VERSION, MIN_SCRAP_HISTORY_DAYS, MIN_TRAINING_ROWS,
@@ -26,8 +28,7 @@ from ..etl.validation import chronological_split
 from .evaluate import quantile_metrics, regression_metrics
 from .model_registry import (
     load_active_model_metadata,
-    new_version_dir,
-    write_active_pointer,
+    activate_model_version,
 )
 
 
@@ -41,7 +42,11 @@ def _quantile_model(quantile: float):
     )
 
 
-def retrain(dataset: pd.DataFrame | None = None) -> dict[str, Any]:
+def retrain(
+    dataset: pd.DataFrame | None = None,
+    *,
+    db: Session | None = None,
+) -> dict[str, Any]:
     result = build_trainable_dataset() if dataset is None else {"dataset": dataset, "path": "database"}
     data = result["dataset"]
     required = {"observation_date", TARGET, "is_trainable", *FEATURE_COLUMNS}
@@ -120,57 +125,78 @@ def retrain(dataset: pd.DataFrame | None = None) -> dict[str, Any]:
             "metrics": metrics,
         }
 
-    active = load_active_model_metadata()
-    if active:
-        active_metrics_path = Path(active["path"]) / "metrics.json"
-        active_metrics = json.loads(active_metrics_path.read_text(encoding="utf-8"))
-        active_mae = active_metrics["validation"]["p50"]["mae"]
-        if validation_mae > active_mae:
-            return {
-                "status": "skipped",
-                "reason": "candidate_does_not_improve_active_model",
-                "validation_mae": validation_mae,
-                "active_validation_mae": active_mae,
-                "metrics": metrics,
-            }
+    owned_db = db is None
+    if db is None:
+        from ..core.database import SessionLocal
+        db = SessionLocal()
+    try:
+        active = load_active_model_metadata(db)
+        if active:
+            active_mae = active["metrics"]["validation"]["p50"]["mae"]
+            if validation_mae > active_mae:
+                return {
+                    "status": "skipped",
+                    "reason": "candidate_does_not_improve_active_model",
+                    "validation_mae": validation_mae,
+                    "active_validation_mae": active_mae,
+                    "metrics": metrics,
+                }
 
-    version = (
-        f"v{datetime.now(timezone.utc):%Y%m%d%H%M%S}"
-        f"-{uuid4().hex[:8]}"
-    )
-    directory = new_version_dir(version)
-    for quantile, model in models.items():
-        joblib.dump(model, directory / f"model_p{int(quantile * 100)}.joblib")
-    directory.joinpath("metadata.json").write_text(json.dumps({
-        "version": version,
-        "target": TARGET,
-        "quantiles": [0.1, 0.5, 0.9],
-        "feature_version": FEATURE_VERSION,
-        "dataset_path": result["path"],
-        "genuine_collection_dates": genuine_dates,
-    }, indent=2), encoding="utf-8")
-    directory.joinpath("feature_schema.json").write_text(json.dumps({
-        "feature_version": FEATURE_VERSION,
-        "target": TARGET,
-        "feature_names": numeric,
-        "quantiles": [0.1, 0.5, 0.9],
-    }, indent=2), encoding="utf-8")
-    directory.joinpath("metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
-    write_active_pointer(version, directory)
-    return {
-        "status": "promoted",
-        "version": version,
-        "metrics": metrics,
-        "promotion": {
-            "validation_mae": validation_mae,
-            "maximum_validation_mae": (
-                PROMOTION_MAX_VALIDATION_MAE
-                if np.isfinite(PROMOTION_MAX_VALIDATION_MAE)
-                else None
-            ),
-            "compared_with_active": bool(active),
-        },
-    }
+        version = (
+            f"v{datetime.now(timezone.utc):%Y%m%d%H%M%S}"
+            f"-{uuid4().hex[:8]}"
+        )
+        with tempfile.TemporaryDirectory(prefix=f"scraplink-model-{version}-") as temporary:
+            directory = Path(temporary)
+            for quantile, model in models.items():
+                joblib.dump(model, directory / f"model_p{int(quantile * 100)}.joblib")
+            metadata = {
+                "version": version,
+                "target": TARGET,
+                "quantiles": [0.1, 0.5, 0.9],
+                "feature_version": FEATURE_VERSION,
+                "dataset_path": result["path"],
+                "genuine_collection_dates": genuine_dates,
+            }
+            feature_schema = {
+                "feature_version": FEATURE_VERSION,
+                "target": TARGET,
+                "feature_names": numeric,
+                "quantiles": [0.1, 0.5, 0.9],
+            }
+            directory.joinpath("metadata.json").write_text(
+                json.dumps(metadata, indent=2), encoding="utf-8"
+            )
+            directory.joinpath("feature_schema.json").write_text(
+                json.dumps(feature_schema, indent=2), encoding="utf-8"
+            )
+            directory.joinpath("metrics.json").write_text(
+                json.dumps(metrics, indent=2), encoding="utf-8"
+            )
+            activate_model_version(
+                db,
+                version,
+                directory,
+                metrics=metrics,
+                feature_schema=feature_schema,
+            )
+        return {
+            "status": "promoted",
+            "version": version,
+            "metrics": metrics,
+            "promotion": {
+                "validation_mae": validation_mae,
+                "maximum_validation_mae": (
+                    PROMOTION_MAX_VALIDATION_MAE
+                    if np.isfinite(PROMOTION_MAX_VALIDATION_MAE)
+                    else None
+                ),
+                "compared_with_active": bool(active),
+            },
+        }
+    finally:
+        if owned_db:
+            db.close()
 
 
 def main() -> int:

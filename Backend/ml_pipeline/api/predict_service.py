@@ -6,16 +6,17 @@ arguments remain accepted so existing API callers can migrate gradually.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import joblib
 import numpy as np
 import pandas as pd
+from sqlalchemy.orm import Session
 
 from ..etl.pipeline_config import SCRAP_CANONICAL_PATH
 from ..etl.trainable import FEATURE_COLUMNS, build_trainable_dataset
 from ..training.model_registry import load_active_model_metadata
+from ..storage.cloudinary_models import download_model_artifacts
 
 _MODEL_CACHE: dict[str, Any] = {}
 
@@ -31,26 +32,25 @@ def _latest_observation(commodity: str) -> dict[str, Any] | None:
     return {"price": float(row["price_inr_per_kg"]), "date": str(row["observation_date"])}
 
 
-def _load_active() -> dict[str, Any] | None:
-    metadata = load_active_model_metadata()
+def _load_active(db: Session) -> dict[str, Any] | None:
+    metadata = load_active_model_metadata(db)
     if metadata is None:
         return None
-    directory = Path(metadata["path"])
     if metadata.get("version") in _MODEL_CACHE:
         return _MODEL_CACHE[metadata["version"]]
+    directory = download_model_artifacts(metadata)
     models = {}
     for quantile in (10, 50, 90):
         path = directory / f"model_p{quantile}.joblib"
         if not path.exists():
             raise FileNotFoundError(f"Active model is missing {path.name}")
         models[quantile] = joblib.load(path)
-    schema_path = directory / "feature_schema.json"
-    schema = json.loads(schema_path.read_text(encoding="utf-8")) if schema_path.exists() else {}
     loaded = {
         "version": metadata["version"],
         "models": models,
-        "features": schema.get("feature_names", FEATURE_COLUMNS),
+        "features": metadata["feature_schema"].get("feature_names", FEATURE_COLUMNS),
     }
+    _MODEL_CACHE.clear()
     _MODEL_CACHE[metadata["version"]] = loaded
     return loaded
 
@@ -107,13 +107,16 @@ def get_price_prediction(
     pct_change_30: float | None = None,
     models_dir: str | None = None,
     confidence_rmse: float = 15.0,
+    db: Session | None = None,
 ) -> dict[str, Any]:
     """Return ordered P10/P50/P90 estimates plus the legacy response fields."""
+    if db is None:
+        raise RuntimeError("A database session is required to load the active model")
     feature_values, prediction_date = _legacy_features(
         commodity, lag_1, lag_7, lag_14, lag_30, rolling_mean_7,
         rolling_mean_30, rolling_std_7, rolling_std_30, pct_change_7, pct_change_30,
     )
-    active = _load_active()
+    active = _load_active(db)
     if active:
         try:
             trainable = build_trainable_dataset()["dataset"]
