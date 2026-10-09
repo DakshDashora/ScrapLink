@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Link,useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
-import { fetchCategories } from '../../redux/slices/categorySlice';
+import { Link, useNavigate } from 'react-router-dom';
+
 import { createListing, updateListing } from '../../redux/slices/listingSlice';
+import { fetchCategories } from '../../redux/slices/categorySlice';
+import { geocodeAddress, reverseGeocode } from '../../utils/geocode';
+import { useGeolocation } from '../../utils/useGeolocation';
+import LocationPicker from './LocationPicker';
 
 const empty = {
   category_id: '',
@@ -26,6 +29,7 @@ const empty = {
 const ListingForm = ({ initial, isEdit = false }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+
   const { isSaving, error } = useSelector((s) => s.listings);
   const categories = useSelector((s) => s.categories.items);
 
@@ -35,15 +39,82 @@ const ListingForm = ({ initial, isEdit = false }) => {
     location: { ...empty.location, ...(initial?.location || {}) },
   }));
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const setLoc = (k, v) => setForm((f) => ({ ...f, location: { ...f.location, [k]: v } }));
+  const [geocoding, setGeocoding] = useState(false);
+  const [geoError, setGeoError] = useState('');
 
+  const [reversing, setReversing] = useState(false);
+  const [autoFillNote, setAutoFillNote] = useState('');
+
+  const { requestPosition, loading: gpsLoading, error: gpsError } = useGeolocation();
+
+  // ---------------- Category fetch ----------------
   useEffect(() => {
-  if (categories.length === 0) dispatch(fetchCategories());
-}, [dispatch, categories.length]);
+    if (categories.length === 0) dispatch(fetchCategories());
+  }, [dispatch, categories.length]);
 
+  // ---------------- Helpers ----------------
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const setLoc = (k, v) =>
+    setForm((f) => ({ ...f, location: { ...f.location, [k]: v } }));
+
+  // ---------------- Geocode from address ----------------
+  const handleFindOnMap = async () => {
+    setGeoError('');
+    setGeocoding(true);
+    try {
+      const { latitude, longitude } = await geocodeAddress({
+        address: form.location.address,
+        city: form.location.city,
+        state: form.location.state,
+      });
+      setForm((f) => ({
+        ...f,
+        location: { ...f.location, latitude, longitude },
+      }));
+    } catch (err) {
+      setGeoError(err.message || 'Could not find location');
+    } finally {
+      setGeocoding(false);
+    }
+  };
+
+  // ---------------- GPS: Use My Current Location ----------------
+  const handleUseMyLocation = async () => {
+    try {
+      setAutoFillNote('');
+      setGeoError('');
+      const { latitude, longitude } = await requestPosition();
+
+      // 1. Drop pin immediately
+      setLoc('latitude', latitude);
+      setLoc('longitude', longitude);
+
+      // 2. Reverse-geocode to fill city/state/address
+      setReversing(true);
+      const { city, state, address } = await reverseGeocode(latitude, longitude);
+      setForm((f) => ({
+        ...f,
+        location: {
+          ...f.location,
+          latitude,
+          longitude,
+          city: city || f.location.city,
+          state: state || f.location.state,
+          address: address || f.location.address,
+        },
+      }));
+      setAutoFillNote('Location filled from GPS. You can adjust it manually.');
+    } catch {
+      // gpsError already captured by hook
+    } finally {
+      setReversing(false);
+    }
+  };
+
+  // ---------------- Submit ----------------
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     const payload = {
       category_id: form.category_id,
       material_name: form.material_name,
@@ -68,14 +139,18 @@ const ListingForm = ({ initial, isEdit = false }) => {
 
     const res = await dispatch(action).unwrap().catch(() => null);
     if (res) {
-      navigate(isEdit ? `/marketplace/${res.id}` : `/seller/listings/${res.id}/edit`);
+      navigate(isEdit ? `/seller/listings/${res.id}/edit` : `/seller/listings`);
     }
   };
+
+  const hasOrgError =
+    typeof error === 'string' && error.toLowerCase().includes('organization');
 
   return (
     <form className="listing-form" onSubmit={handleSubmit}>
       <h2>{isEdit ? 'Edit Listing' : 'Create Listing'}</h2>
 
+      {/* ---------------- Core fields ---------------- */}
       <div className="form-grid">
         <label>
           Material Name *
@@ -87,43 +162,40 @@ const ListingForm = ({ initial, isEdit = false }) => {
           />
         </label>
 
-<label>
-  Category *
-  <select
-    value={form.category_id}
-    onChange={(e) => set('category_id', e.target.value)}
-    required
-    disabled={categories.length === 0}
-  >
-    <option value="">
-      {categories.length === 0 ? 'No categories available' : '-- Select --'}
-    </option>
-    {categories.map((c) => {
-      const id = c.id || c.category_id || c._id;
-      const name = c.name || c.category_name || c.title;
-      return (
-        <option key={id} value={id}>
-          {name}
-        </option>
-      );
-    })}
-  </select>
-
-  {/* TEMP DEBUG — remove after it works */}
-  <small style={{ color: '#94a3b8', fontSize: '0.7rem' }}>
-    Loaded: {categories.length} categories
-  </small>
-</label>
+        <label>
+          Category *
+          <select
+            value={form.category_id}
+            onChange={(e) => set('category_id', e.target.value)}
+            required
+            disabled={categories.length === 0}
+          >
+            <option value="">
+              {categories.length === 0 ? 'Loading categories…' : '-- Select --'}
+            </option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <label>
           Grade / Quality
-          <input type="text" value={form.grade} onChange={(e) => set('grade', e.target.value)} />
+          <input
+            type="text"
+            value={form.grade}
+            onChange={(e) => set('grade', e.target.value)}
+          />
         </label>
 
         <label>
           Quantity *
           <input
-            type="number" min="0" step="any"
+            type="number"
+            min="0"
+            step="any"
             value={form.quantity}
             onChange={(e) => set('quantity', e.target.value)}
             required
@@ -132,7 +204,10 @@ const ListingForm = ({ initial, isEdit = false }) => {
 
         <label>
           Unit
-          <select value={form.unit} onChange={(e) => set('unit', e.target.value)}>
+          <select
+            value={form.unit}
+            onChange={(e) => set('unit', e.target.value)}
+          >
             <option value="kg">kg</option>
             <option value="tonne">tonne</option>
             <option value="unit">unit</option>
@@ -144,7 +219,9 @@ const ListingForm = ({ initial, isEdit = false }) => {
         <label>
           Asking Price (₹)
           <input
-            type="number" min="0" step="any"
+            type="number"
+            min="0"
+            step="any"
             value={form.asking_price}
             onChange={(e) => set('asking_price', e.target.value)}
           />
@@ -175,52 +252,136 @@ const ListingForm = ({ initial, isEdit = false }) => {
         />
       </label>
 
+      {/* ---------------- Location block ---------------- */}
       <fieldset>
         <legend>Pickup Location</legend>
+
+        <div className="geo-topbar">
+          <button
+            type="button"
+            className="btn-primary use-location-btn"
+            onClick={handleUseMyLocation}
+            disabled={gpsLoading || reversing}
+          >
+            {gpsLoading
+              ? '📡 Getting location…'
+              : reversing
+              ? '🌐 Filling address…'
+              : '📍 Use My Current Location'}
+          </button>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleFindOnMap}
+            disabled={geocoding || (!form.location.city && !form.location.state)}
+          >
+            {geocoding ? 'Locating…' : '🔎 Find Address on Map'}
+          </button>
+
+          {autoFillNote && <span className="auto-fill-note">{autoFillNote}</span>}
+        </div>
+
+        {gpsError && <div className="error-message">{gpsError}</div>}
+        {geoError && <div className="error-message">{geoError}</div>}
+
         <div className="form-grid">
-          <label>Address
-            <input type="text" value={form.location.address}
-              onChange={(e) => setLoc('address', e.target.value)} />
+          <label>
+            Address
+            <input
+              type="text"
+              placeholder="Plot no, street, area"
+              value={form.location.address}
+              onChange={(e) => setLoc('address', e.target.value)}
+            />
           </label>
-          <label>City
-            <input type="text" value={form.location.city}
-              onChange={(e) => setLoc('city', e.target.value)} />
+          <label>
+            City
+            <input
+              type="text"
+              placeholder="e.g. Jaipur"
+              value={form.location.city}
+              onChange={(e) => setLoc('city', e.target.value)}
+            />
           </label>
-          <label>State
-            <input type="text" value={form.location.state}
-              onChange={(e) => setLoc('state', e.target.value)} />
-          </label>
-          <label>Latitude
-            <input type="number" step="any" value={form.location.latitude}
-              onChange={(e) => setLoc('latitude', e.target.value)} />
-          </label>
-          <label>Longitude
-            <input type="number" step="any" value={form.location.longitude}
-              onChange={(e) => setLoc('longitude', e.target.value)} />
+          <label>
+            State
+            <input
+              type="text"
+              placeholder="e.g. Rajasthan"
+              value={form.location.state}
+              onChange={(e) => setLoc('state', e.target.value)}
+            />
           </label>
         </div>
+
+        {form.location.latitude && form.location.longitude && (
+          <div className="coords-badge">
+            📌 Lat: {form.location.latitude}, Lng: {form.location.longitude}
+          </div>
+        )}
+
+        <div className="map-wrapper">
+          <LocationPicker
+            latitude={form.location.latitude}
+            longitude={form.location.longitude}
+            onChange={(lat, lng) => {
+              setLoc('latitude', lat);
+              setLoc('longitude', lng);
+            }}
+          />
+        </div>
+
+        <details className="advanced-coords">
+          <summary>Advanced: enter coordinates manually</summary>
+          <div className="form-grid">
+            <label>
+              Latitude
+              <input
+                type="number"
+                step="any"
+                value={form.location.latitude}
+                onChange={(e) => setLoc('latitude', e.target.value)}
+              />
+            </label>
+            <label>
+              Longitude
+              <input
+                type="number"
+                step="any"
+                value={form.location.longitude}
+                onChange={(e) => setLoc('longitude', e.target.value)}
+              />
+            </label>
+          </div>
+        </details>
       </fieldset>
 
+      {/* ---------------- Error ---------------- */}
       {error && (
-  <div className="error-message">
-    {error}
-    {typeof error === 'string' &&
-      error.toLowerCase().includes('organization') && (
-        <>
-          {' '}
-          <Link to="/organization/new" className="inline-link">
-            → Create Organization
-          </Link>
-        </>
+        <div className="error-message">
+          {error}
+          {hasOrgError && (
+            <>
+              {' '}
+              <Link to="/organization/new" className="inline-link">
+                → Create Organization
+              </Link>
+            </>
+          )}
+        </div>
       )}
-  </div>
-)}
 
+      {/* ---------------- Actions ---------------- */}
       <div className="form-actions">
         <button type="submit" className="btn-primary" disabled={isSaving}>
           {isSaving ? 'Saving…' : isEdit ? 'Update Listing' : 'Create Listing'}
         </button>
-        <button type="button" className="btn-secondary" onClick={() => navigate(-1)}>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => navigate(-1)}
+        >
           Cancel
         </button>
       </div>
