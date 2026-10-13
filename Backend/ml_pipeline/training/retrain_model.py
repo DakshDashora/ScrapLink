@@ -157,7 +157,11 @@ def retrain(
         db = SessionLocal()
     try:
         active = load_active_model_metadata(db)
-        if active:
+        active_is_compatible = (
+            active is not None
+            and active["feature_schema"].get("feature_version") == FEATURE_VERSION
+        )
+        if active_is_compatible:
             active_mae = active["metrics"]["validation"]["p50"]["mae"]
             if validation_mae > active_mae:
                 return {
@@ -221,7 +225,7 @@ def retrain(
                     if np.isfinite(PROMOTION_MAX_VALIDATION_MAE)
                     else None
                 ),
-                "compared_with_active": bool(active),
+                "compared_with_active": active_is_compatible,
             },
         }
     finally:

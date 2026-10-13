@@ -66,6 +66,7 @@ class DailyIngestionResponse(StrictSchema):
     run_id: StrictInt = Field(gt=0)
     persistence: PersistenceSummary
     details: dict[str, Any]
+    analysis_report: dict[str, Any]
 
 
 class FeatureEngineeringResponse(StrictSchema):
@@ -78,6 +79,7 @@ class FeatureEngineeringResponse(StrictSchema):
 class WeeklyAnalysisResponse(StrictSchema):
     status: Literal["succeeded"]
     manifest: dict[str, Any]
+    analysis_report: dict[str, Any]
 
 
 class TrainingResponse(StrictSchema):
@@ -85,6 +87,9 @@ class TrainingResponse(StrictSchema):
     reason: StrictStr | None = None
     version: StrictStr | None = None
     artifact_files: list[StrictStr] | None = None
+    feature_persistence: PersistenceSummary | None = None
+    legacy_scrap_rows_converted: StrictInt | None = Field(default=None, ge=0)
+    analysis_report: dict[str, Any] | None = None
     metrics: dict[str, Any] | None = None
     collection_dates: StrictInt | None = Field(default=None, ge=0)
     minimum_collection_dates: StrictInt | None = Field(default=None, ge=0)

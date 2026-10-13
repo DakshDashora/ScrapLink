@@ -34,6 +34,24 @@ def init_database() -> None:
     logger.info("Database startup: cleaning duplicate source rows")
     with engine.begin() as connection:
         connection.execute(text("""
+            ALTER TABLE ml_source_observations
+            ADD COLUMN IF NOT EXISTS source_price DOUBLE PRECISION
+        """))
+        connection.execute(text("""
+            ALTER TABLE ml_source_observations
+            ADD COLUMN IF NOT EXISTS fx_rate_to_inr DOUBLE PRECISION
+        """))
+        connection.execute(text("""
+            ALTER TABLE ml_source_observations
+            ADD COLUMN IF NOT EXISTS fx_rate_date DATE
+        """))
+        connection.execute(text("""
+            UPDATE ml_pipeline_runs
+            SET details = (details::jsonb - 'analysis_summary')::json
+            WHERE details IS NOT NULL
+              AND details::jsonb ? 'analysis_summary'
+        """))
+        connection.execute(text("""
             DELETE FROM ml_source_observations AS duplicate
             USING ml_source_observations AS kept
             WHERE duplicate.id > kept.id

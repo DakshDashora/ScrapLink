@@ -14,6 +14,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from ..core.db_store import load_source_dataframes
+from ..etl.pipeline_config import FEATURE_VERSION
 from ..etl.trainable import FEATURE_COLUMNS, build_trainable_dataset
 from ..training.model_registry import load_active_model_metadata
 from ..storage.cloudinary_models import download_model_artifacts
@@ -25,6 +26,11 @@ def _load_active(db: Session) -> dict[str, Any] | None:
     metadata = load_active_model_metadata(db)
     if metadata is None:
         return None
+    if metadata["feature_schema"].get("feature_version") != FEATURE_VERSION:
+        raise RuntimeError(
+            "The active model uses an outdated feature/price-unit version; "
+            "run model training again before serving predictions"
+        )
     if metadata.get("version") in _MODEL_CACHE:
         return _MODEL_CACHE[metadata["version"]]
     directory = download_model_artifacts(metadata)
