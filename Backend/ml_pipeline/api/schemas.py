@@ -35,6 +35,7 @@ class PredictionRequest(StrictSchema):
 class PersistenceSummary(StrictSchema):
     attempted: StrictInt = Field(ge=0)
     inserted: StrictInt = Field(ge=0)
+    updated: StrictInt = Field(default=0, ge=0)
     skipped: StrictInt = Field(ge=0)
 
 
@@ -83,6 +84,7 @@ class TrainingResponse(StrictSchema):
     status: Literal["skipped", "promoted"]
     reason: StrictStr | None = None
     version: StrictStr | None = None
+    artifact_files: list[StrictStr] | None = None
     metrics: dict[str, Any] | None = None
     collection_dates: StrictInt | None = Field(default=None, ge=0)
     minimum_collection_dates: StrictInt | None = Field(default=None, ge=0)

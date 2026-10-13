@@ -13,23 +13,12 @@ import numpy as np
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from ..etl.pipeline_config import SCRAP_CANONICAL_PATH
+from ..core.db_store import load_source_dataframes
 from ..etl.trainable import FEATURE_COLUMNS, build_trainable_dataset
 from ..training.model_registry import load_active_model_metadata
 from ..storage.cloudinary_models import download_model_artifacts
 
 _MODEL_CACHE: dict[str, Any] = {}
-
-
-def _latest_observation(commodity: str) -> dict[str, Any] | None:
-    if not SCRAP_CANONICAL_PATH.exists():
-        return None
-    data = pd.read_csv(SCRAP_CANONICAL_PATH)
-    data = data[data["material"].astype(str).str.casefold() == commodity.casefold()]
-    if data.empty:
-        return None
-    row = data.sort_values("observation_date").iloc[-1]
-    return {"price": float(row["price_inr_per_kg"]), "date": str(row["observation_date"])}
 
 
 def _load_active(db: Session) -> dict[str, Any] | None:
@@ -67,14 +56,19 @@ def _legacy_features(
     rolling_std_30: float | None,
     pct_change_7: float | None,
     pct_change_30: float | None,
+    latest_features: dict[str, Any] | None,
 ) -> tuple[dict[str, float], str | None]:
-    latest = _latest_observation(commodity)
-    if latest is None and lag_1 is None:
+    if latest_features is not None:
+        return (
+            {name: latest_features.get(name) for name in FEATURE_COLUMNS},
+            str(latest_features["observation_date"]),
+        )
+    if lag_1 is None:
         raise ValueError(
             f"No observed ScrapMonster price is available for {commodity!r}; "
             "collect a snapshot or supply an observed lag_1 value."
         )
-    base = latest["price"] if latest else float(lag_1)
+    base = float(lag_1)
     values = {
         "scrap_price_lag_1": lag_1 if lag_1 is not None else base,
         "scrap_price_lag_7": lag_7 if lag_7 is not None else base,
@@ -90,7 +84,24 @@ def _legacy_features(
         "day_of_week": 0.0, "month": 1.0, "quarter": 1.0,
         "has_scrap_history": 1.0, "has_mcx_history": 0.0,
     }
-    return values, latest["date"] if latest else None
+    return values, None
+
+
+def _latest_database_features(db: Session, commodity: str) -> dict[str, Any] | None:
+    sources = load_source_dataframes(db)
+    if sources["scrap"].empty:
+        return None
+    trainable = build_trainable_dataset(
+        scrap=sources["scrap"],
+        mcx=sources["mcx"],
+        persist_artifacts=False,
+    )["dataset"]
+    rows = trainable[
+        trainable["material"].astype(str).str.casefold() == commodity.casefold()
+    ]
+    if rows.empty:
+        return None
+    return rows.sort_values("observation_date").iloc[-1].to_dict()
 
 
 def get_price_prediction(
@@ -112,27 +123,20 @@ def get_price_prediction(
     """Return ordered P10/P50/P90 estimates plus the legacy response fields."""
     if db is None:
         raise RuntimeError("A database session is required to load the active model")
-    feature_values, prediction_date = _legacy_features(
-        commodity, lag_1, lag_7, lag_14, lag_30, rolling_mean_7,
-        rolling_mean_30, rolling_std_7, rolling_std_30, pct_change_7, pct_change_30,
-    )
     active = _load_active(db)
-    if active:
-        try:
-            trainable = build_trainable_dataset()["dataset"]
-            rows = trainable[trainable["material"].astype(str).str.casefold() == commodity.casefold()]
-            if not rows.empty:
-                feature_values.update(rows.sort_values("observation_date").iloc[-1].to_dict())
-        except (FileNotFoundError, ValueError):
-            pass
-        vector = pd.DataFrame([{name: feature_values.get(name, np.nan) for name in active["features"]}])
-        raw = [float(active["models"][quantile].predict(vector)[0]) for quantile in (10, 50, 90)]
-        estimates = np.sort(np.asarray(raw, dtype=float))
-        model_version = active["version"]
-    else:
+    if active is None:
         raise RuntimeError(
             "No active price model is available; training history is insufficient"
         )
+    feature_values, prediction_date = _legacy_features(
+        commodity, lag_1, lag_7, lag_14, lag_30, rolling_mean_7,
+        rolling_mean_30, rolling_std_7, rolling_std_30, pct_change_7, pct_change_30,
+        _latest_database_features(db, commodity),
+    )
+    vector = pd.DataFrame([{name: feature_values.get(name, np.nan) for name in active["features"]}])
+    raw = [float(active["models"][quantile].predict(vector)[0]) for quantile in (10, 50, 90)]
+    estimates = np.sort(np.asarray(raw, dtype=float))
+    model_version = active["version"]
     if not np.isfinite(estimates).all() or (estimates < 0).any():
         raise ValueError("Model returned non-finite or negative price estimates")
     p10, p50, p90 = [round(float(value), 2) for value in estimates]

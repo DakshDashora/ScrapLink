@@ -141,7 +141,7 @@ def feature_engineering(
             "succeeded",
             details=result["eligibility"],
             rows_read=len(result["dataset"]),
-            rows_written=persistence["inserted"],
+            rows_written=persistence["inserted"] + persistence["updated"],
         )
         return FeatureEngineeringResponse(
             status="succeeded",
@@ -174,7 +174,8 @@ def weekly_analysis(
         persistence = persist_features(db, result["dataset"])
         finish_run(
             db, run, "succeeded", details=result["eligibility"],
-            rows_read=len(result["dataset"]), rows_written=persistence["inserted"],
+            rows_read=len(result["dataset"]),
+            rows_written=persistence["inserted"] + persistence["updated"],
         )
         return WeeklyAnalysisResponse(
             status="succeeded",

@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
 from .db_models import FeatureObservation, PipelineRun, SourceObservation
@@ -142,12 +142,51 @@ def persist_features(db: Session, dataset: pd.DataFrame) -> dict[str, int]:
             "feature_version": FEATURE_VERSION,
             "features": features,
         })
-    return _insert_ignore_conflicts(
-        db,
-        FeatureObservation,
-        records,
-        "uq_ml_feature_observation",
+    if not records:
+        return {"attempted": 0, "inserted": 0, "updated": 0, "skipped": 0}
+
+    key_columns = (
+        FeatureObservation.target_source,
+        FeatureObservation.observation_date,
+        FeatureObservation.material,
+        FeatureObservation.scrap_type,
+        FeatureObservation.feature_version,
     )
+    keys = [
+        (
+            record["target_source"],
+            record["observation_date"],
+            record["material"],
+            record["scrap_type"],
+            record["feature_version"],
+        )
+        for record in records
+    ]
+    existing = set(
+        db.execute(select(*key_columns).where(tuple_(*key_columns).in_(keys))).all()
+    )
+    statement = pg_insert(FeatureObservation).values(records)
+    excluded = statement.excluded
+    statement = statement.on_conflict_do_update(
+        constraint="uq_ml_feature_observation",
+        set_={
+            "target_price_inr_per_kg": excluded.target_price_inr_per_kg,
+            "features": excluded.features,
+        },
+    )
+    try:
+        db.execute(statement)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    updated = len(existing)
+    return {
+        "attempted": len(records),
+        "inserted": len(records) - updated,
+        "updated": updated,
+        "skipped": 0,
+    }
 
 
 def load_source_dataframes(db: Session) -> dict[str, pd.DataFrame]:
