@@ -7,11 +7,12 @@ from typing import Any
 
 import pandas as pd
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
 from .db_models import FeatureObservation, PipelineRun, SourceObservation
 from ..etl.pipeline_config import FEATURE_VERSION
+from ..etl.currency import convert_to_inr_per_kg
 
 
 def start_run(db: Session, job_type: str) -> PipelineRun:
@@ -52,28 +53,6 @@ def _key_value(value: Any) -> str:
     return "" if value is None else str(value)
 
 
-def _insert_ignore_conflicts(
-    db: Session,
-    model: type[SourceObservation] | type[FeatureObservation],
-    records: list[dict[str, Any]],
-    constraint_name: str,
-) -> dict[str, int]:
-    if not records:
-        return {"attempted": 0, "inserted": 0, "skipped": 0}
-
-    statement = pg_insert(model).values(records).on_conflict_do_nothing(
-        constraint=constraint_name
-    )
-    result = db.execute(statement)
-    db.commit()
-    inserted = result.rowcount if result.rowcount is not None and result.rowcount >= 0 else 0
-    return {
-        "attempted": len(records),
-        "inserted": inserted,
-        "skipped": len(records) - inserted,
-    }
-
-
 def persist_canonical_sources(
     db: Session,
     scrap: pd.DataFrame,
@@ -98,7 +77,14 @@ def persist_canonical_sources(
                 "scrap_type": _key_value(row.get("scrap_type")),
                 "commodity": _key_value(row.get("commodity")),
                 "ticker": _key_value(row.get("ticker")),
+                "source_price": _value(row.get("source_price")),
                 "price_inr_per_kg": _value(row.get("price_inr_per_kg")),
+                "fx_rate_to_inr": _value(row.get("fx_rate_to_inr")),
+                "fx_rate_date": (
+                    pd.to_datetime(row.get("fx_rate_date"), errors="coerce").date()
+                    if pd.notna(row.get("fx_rate_date"))
+                    else None
+                ),
                 "reference_price": _value(row.get("reference_price")),
                 "source_currency": _value(row.get("source_currency")),
                 "source_unit": _value(row.get("source_unit")),
@@ -110,12 +96,117 @@ def persist_canonical_sources(
                 "source_hash": _key_value(row.get("source_hash", "")),
             }
             records.append(values)
-    return _insert_ignore_conflicts(
-        db,
-        SourceObservation,
-        records,
-        "uq_ml_source_observation",
+    if not records:
+        return {"attempted": 0, "inserted": 0, "updated": 0, "skipped": 0}
+
+    key_columns = (
+        SourceObservation.source,
+        SourceObservation.observation_date,
+        SourceObservation.material,
+        SourceObservation.scrap_type,
+        SourceObservation.commodity,
+        SourceObservation.ticker,
+        SourceObservation.source_hash,
     )
+    inserted = 0
+    updated = 0
+    try:
+        for source in ("ScrapMonster", "MCX", "YahooFinance"):
+            source_records = [record for record in records if record["source"] == source]
+            for offset in range(0, len(source_records), 400):
+                batch = source_records[offset : offset + 400]
+                batch_keys = [
+                    tuple(record[column.key] for column in key_columns)
+                    for record in batch
+                ]
+                existing = set(
+                    db.execute(
+                        select(*key_columns).where(tuple_(*key_columns).in_(batch_keys))
+                    ).all()
+                )
+                statement = pg_insert(SourceObservation).values(batch)
+                if source == "MCX":
+                    statement = statement.on_conflict_do_nothing(
+                        constraint="uq_ml_source_observation"
+                    )
+                else:
+                    excluded = statement.excluded
+                    statement = statement.on_conflict_do_update(
+                        constraint="uq_ml_source_observation",
+                        set_={
+                            "source_price": excluded.source_price,
+                            "price_inr_per_kg": excluded.price_inr_per_kg,
+                            "fx_rate_to_inr": excluded.fx_rate_to_inr,
+                            "fx_rate_date": excluded.fx_rate_date,
+                            "reference_price": excluded.reference_price,
+                            "source_currency": excluded.source_currency,
+                            "source_unit": excluded.source_unit,
+                            "traded_contract_lots": excluded.traded_contract_lots,
+                            "total_value_lakhs": excluded.total_value_lakhs,
+                            "avg_daily_turnover_lakhs": excluded.avg_daily_turnover_lakhs,
+                            "premium_value_lakhs": excluded.premium_value_lakhs,
+                            "source_file": excluded.source_file,
+                        },
+                    )
+                result = db.execute(statement)
+                affected = max(result.rowcount or 0, 0)
+                if source == "MCX":
+                    inserted += affected
+                else:
+                    updated += len(existing)
+                    inserted += max(affected - len(existing), 0)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {
+        "attempted": len(records),
+        "inserted": inserted,
+        "updated": updated,
+        "skipped": len(records) - inserted - updated,
+    }
+
+
+def backfill_scrap_price_conversions(db: Session) -> int:
+    """Convert legacy ScrapMonster rows whose source price was stored unconverted."""
+    rows = db.execute(
+        select(SourceObservation).where(
+            SourceObservation.source == "ScrapMonster",
+            SourceObservation.source_price.is_(None),
+        )
+    ).scalars().all()
+    updated = 0
+    try:
+        for row in rows:
+            if row.price_inr_per_kg is None:
+                raise ValueError(
+                    f"ScrapMonster observation {row.id} has no price to normalize"
+                )
+            source_currency = (row.source_currency or "").strip()
+            source_unit = (row.source_unit or "").strip()
+            if not source_currency or not source_unit:
+                raise ValueError(
+                    f"ScrapMonster observation {row.id} has unknown source currency/unit; "
+                    "refusing to assume INR/kg"
+                )
+            original_price = float(row.price_inr_per_kg)
+            converted, rate, rate_date = convert_to_inr_per_kg(
+                original_price,
+                source_currency,
+                source_unit,
+                row.observation_date,
+            )
+            row.source_price = original_price
+            row.price_inr_per_kg = converted
+            row.fx_rate_to_inr = rate
+            row.fx_rate_date = rate_date
+            updated += 1
+        if updated:
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return updated
 
 
 def persist_features(db: Session, dataset: pd.DataFrame) -> dict[str, int]:
@@ -142,12 +233,51 @@ def persist_features(db: Session, dataset: pd.DataFrame) -> dict[str, int]:
             "feature_version": FEATURE_VERSION,
             "features": features,
         })
-    return _insert_ignore_conflicts(
-        db,
-        FeatureObservation,
-        records,
-        "uq_ml_feature_observation",
+    if not records:
+        return {"attempted": 0, "inserted": 0, "updated": 0, "skipped": 0}
+
+    key_columns = (
+        FeatureObservation.target_source,
+        FeatureObservation.observation_date,
+        FeatureObservation.material,
+        FeatureObservation.scrap_type,
+        FeatureObservation.feature_version,
     )
+    keys = [
+        (
+            record["target_source"],
+            record["observation_date"],
+            record["material"],
+            record["scrap_type"],
+            record["feature_version"],
+        )
+        for record in records
+    ]
+    existing = set(
+        db.execute(select(*key_columns).where(tuple_(*key_columns).in_(keys))).all()
+    )
+    statement = pg_insert(FeatureObservation).values(records)
+    excluded = statement.excluded
+    statement = statement.on_conflict_do_update(
+        constraint="uq_ml_feature_observation",
+        set_={
+            "target_price_inr_per_kg": excluded.target_price_inr_per_kg,
+            "features": excluded.features,
+        },
+    )
+    try:
+        db.execute(statement)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    updated = len(existing)
+    return {
+        "attempted": len(records),
+        "inserted": len(records) - updated,
+        "updated": updated,
+        "skipped": 0,
+    }
 
 
 def load_source_dataframes(db: Session) -> dict[str, pd.DataFrame]:
@@ -160,7 +290,8 @@ def load_source_dataframes(db: Session) -> dict[str, pd.DataFrame]:
     ).scalars().all()
     source_columns = [
         "observation_date", "material", "scrap_type", "commodity", "ticker",
-        "price_inr_per_kg", "reference_price", "source_currency", "source_unit",
+        "source_price", "price_inr_per_kg", "fx_rate_to_inr", "fx_rate_date",
+        "reference_price", "source_currency", "source_unit",
         "traded_contract_lots", "total_value_lakhs", "avg_daily_turnover_lakhs",
         "premium_value_lakhs", "source_file", "source_hash",
     ]
@@ -179,9 +310,7 @@ def load_source_dataframes(db: Session) -> dict[str, pd.DataFrame]:
 
     scrap = all_sources[all_sources["source"] == "ScrapMonster"].copy()
     scrap["is_synthetic"] = False
-    scrap["source_price"] = scrap["price_inr_per_kg"]
     scrap["market"] = pd.NA
-    scrap["fx_rate_to_inr"] = 1.0
     scrap["ingestion_timestamp"] = pd.NA
 
     mcx = all_sources[all_sources["source"] == "MCX"].copy()

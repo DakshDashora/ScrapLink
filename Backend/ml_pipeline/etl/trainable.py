@@ -93,6 +93,8 @@ def _feature_dictionary() -> dict[str, dict[str, str]]:
 def build_trainable_dataset(
     scrap: pd.DataFrame | None = None,
     mcx: pd.DataFrame | None = None,
+    *,
+    persist_artifacts: bool = True,
 ) -> dict[str, Any]:
     if scrap is None:
         if not SCRAP_CANONICAL_PATH.exists():
@@ -137,10 +139,6 @@ def build_trainable_dataset(
         ["observation_date", "material", "scrap_type"], na_position="last"
     )
     report = _eligibility_report(dataset, len(scrap))
-    FEATURES_DIR.mkdir(parents=True, exist_ok=True)
-    dataset.assign(observation_date=dataset["observation_date"].dt.strftime("%Y-%m-%d")).to_csv(
-        TRAINABLE_DATASET_PATH, index=False
-    )
     schema = {
         "feature_version": FEATURE_VERSION, "target": TARGET,
         "feature_names": FEATURE_COLUMNS,
@@ -150,8 +148,15 @@ def build_trainable_dataset(
         "trainability_policy": "valid observed ScrapMonster target and at least one prior observation",
         "quantiles": [0.1, 0.5, 0.9],
     }
-    FEATURE_SCHEMA_PATH.write_text(json.dumps(schema, indent=2), encoding="utf-8")
-    FEATURE_DICTIONARY_PATH.write_text(json.dumps(_feature_dictionary(), indent=2), encoding="utf-8")
+    if persist_artifacts:
+        FEATURES_DIR.mkdir(parents=True, exist_ok=True)
+        dataset.assign(
+            observation_date=dataset["observation_date"].dt.strftime("%Y-%m-%d")
+        ).to_csv(TRAINABLE_DATASET_PATH, index=False)
+        FEATURE_SCHEMA_PATH.write_text(json.dumps(schema, indent=2), encoding="utf-8")
+        FEATURE_DICTIONARY_PATH.write_text(
+            json.dumps(_feature_dictionary(), indent=2), encoding="utf-8"
+        )
     audit = leakage_audit(dataset, FEATURE_COLUMNS, TARGET)
     return {"dataset": dataset, "schema": schema, "leakage_audit": audit,
             "eligibility": report, "path": str(TRAINABLE_DATASET_PATH)}

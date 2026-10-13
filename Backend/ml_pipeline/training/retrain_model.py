@@ -42,6 +42,32 @@ def _quantile_model(quantile: float):
     )
 
 
+def _verify_serialized_models(
+    directory: Path,
+    models: dict[float, Any],
+    features: pd.DataFrame,
+    expected_predictions: dict[float, np.ndarray],
+) -> list[str]:
+    artifact_files = [
+        f"model_p{int(quantile * 100)}.joblib"
+        for quantile in (0.1, 0.5, 0.9)
+    ]
+    for quantile, filename in zip((0.1, 0.5, 0.9), artifact_files):
+        path = directory / filename
+        if not path.is_file() or path.stat().st_size == 0:
+            raise RuntimeError(f"Training did not create model artifact {filename}")
+        loaded = joblib.load(path)
+        actual = np.asarray(loaded.predict(features), dtype=float)
+        expected = np.asarray(expected_predictions[quantile], dtype=float)
+        if (
+            actual.shape != expected.shape
+            or not np.isfinite(actual).all()
+            or not np.allclose(actual, expected)
+        ):
+            raise RuntimeError(f"Serialized model artifact failed validation: {filename}")
+    return artifact_files
+
+
 def retrain(
     dataset: pd.DataFrame | None = None,
     *,
@@ -131,7 +157,11 @@ def retrain(
         db = SessionLocal()
     try:
         active = load_active_model_metadata(db)
-        if active:
+        active_is_compatible = (
+            active is not None
+            and active["feature_schema"].get("feature_version") == FEATURE_VERSION
+        )
+        if active_is_compatible:
             active_mae = active["metrics"]["validation"]["p50"]["mae"]
             if validation_mae > active_mae:
                 return {
@@ -150,6 +180,9 @@ def retrain(
             directory = Path(temporary)
             for quantile, model in models.items():
                 joblib.dump(model, directory / f"model_p{int(quantile * 100)}.joblib")
+            artifact_files = _verify_serialized_models(
+                directory, models, x_test, test_predictions
+            )
             metadata = {
                 "version": version,
                 "target": TARGET,
@@ -183,6 +216,7 @@ def retrain(
         return {
             "status": "promoted",
             "version": version,
+            "artifact_files": artifact_files,
             "metrics": metrics,
             "promotion": {
                 "validation_mae": validation_mae,
@@ -191,7 +225,7 @@ def retrain(
                     if np.isfinite(PROMOTION_MAX_VALIDATION_MAE)
                     else None
                 ),
-                "compared_with_active": bool(active),
+                "compared_with_active": active_is_compatible,
             },
         }
     finally:
