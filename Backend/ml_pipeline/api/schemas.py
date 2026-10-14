@@ -35,6 +35,7 @@ class PredictionRequest(StrictSchema):
 class PersistenceSummary(StrictSchema):
     attempted: StrictInt = Field(ge=0)
     inserted: StrictInt = Field(ge=0)
+    updated: StrictInt = Field(default=0, ge=0)
     skipped: StrictInt = Field(ge=0)
 
 
@@ -65,6 +66,7 @@ class DailyIngestionResponse(StrictSchema):
     run_id: StrictInt = Field(gt=0)
     persistence: PersistenceSummary
     details: dict[str, Any]
+    analysis_report: dict[str, Any]
 
 
 class FeatureEngineeringResponse(StrictSchema):
@@ -77,12 +79,17 @@ class FeatureEngineeringResponse(StrictSchema):
 class WeeklyAnalysisResponse(StrictSchema):
     status: Literal["succeeded"]
     manifest: dict[str, Any]
+    analysis_report: dict[str, Any]
 
 
 class TrainingResponse(StrictSchema):
     status: Literal["skipped", "promoted"]
     reason: StrictStr | None = None
     version: StrictStr | None = None
+    artifact_files: list[StrictStr] | None = None
+    feature_persistence: PersistenceSummary | None = None
+    legacy_scrap_rows_converted: StrictInt | None = Field(default=None, ge=0)
+    analysis_report: dict[str, Any] | None = None
     metrics: dict[str, Any] | None = None
     collection_dates: StrictInt | None = Field(default=None, ge=0)
     minimum_collection_dates: StrictInt | None = Field(default=None, ge=0)

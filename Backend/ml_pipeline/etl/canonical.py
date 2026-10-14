@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 
 from .mcx_mapping import MCX_TO_SCRAPLINK
+from .currency import convert_to_inr_per_kg
 from .pipeline_config import (
     CANONICAL_DIR, MCX_CANONICAL_PATH, MCX_DIR, RAW_CONSOLIDATED_PATH,
     SCRAP_CANONICAL_PATH, SCRAPMONSTER_DIR, SCHEMA_VERSION,
@@ -19,7 +20,8 @@ from .yahoo import build_reference_canonical_dataset
 
 SCRAP_COLUMNS = [
     "observation_date", "material", "scrap_type", "market", "source_price",
-    "source_currency", "source_unit", "fx_rate_to_inr", "price_inr_per_kg",
+    "source_currency", "source_unit", "fx_rate_to_inr", "fx_rate_date",
+    "price_inr_per_kg",
     "source", "source_file", "source_hash", "ingestion_timestamp", "is_synthetic",
 ]
 MCX_COLUMNS = [
@@ -66,7 +68,7 @@ def _load_scrap_source(path: Path) -> tuple[pd.DataFrame, dict[str, int]]:
     # New scraper schema and the old consolidated export are both supported.
     date_col = "date" if "date" in raw else "observation_date"
     price_col = next(
-        (col for col in ("price_inr_per_kg", "source_price", "spot_price_inr_kg")
+        (col for col in ("source_price", "price_inr_per_kg", "spot_price_inr_kg")
          if col in raw),
         None,
     )
@@ -84,19 +86,42 @@ def _load_scrap_source(path: Path) -> tuple[pd.DataFrame, dict[str, int]]:
         return pd.DataFrame(columns=SCRAP_COLUMNS), {
             "read": int(len(raw)), "accepted": 0, "rejected": int(len(raw))
         }
-    accepted_prices = prices.loc[valid].reset_index(drop=True)
     accepted_dates = valid_dates.loc[valid].reset_index(drop=True)
+    accepted_prices = prices.loc[valid].reset_index(drop=True)
     pairs = accepted["commodity"].map(_material_mapping)
+    if price_col == "source_price":
+        if not {"source_currency", "source_unit"}.issubset(accepted.columns):
+            raise ValueError(
+                f"Scrap source {path.name} must specify source_currency and source_unit "
+                "when it contains source_price"
+            )
+        currencies = accepted["source_currency"].astype(str).str.strip()
+        units = accepted["source_unit"].astype(str).str.strip()
+    else:
+        currencies = pd.Series("INR", index=accepted.index)
+        units = pd.Series("kg", index=accepted.index)
+    converted = [
+        convert_to_inr_per_kg(
+            source_price,
+            currency,
+            unit,
+            observation_date.date(),
+        )
+        for source_price, currency, unit, observation_date in zip(
+            accepted_prices, currencies, units, accepted_dates
+        )
+    ]
     result = pd.DataFrame({
         "observation_date": accepted_dates.dt.date.astype("string"),
         "material": pairs.map(lambda pair: pair[0]),
         "scrap_type": pairs.map(lambda pair: pair[1]),
         "market": accepted.get("market", accepted.get("category", pd.Series(pd.NA, index=accepted.index))),
         "source_price": accepted_prices.astype(float),
-        "source_currency": accepted.get("source_currency", pd.Series("INR", index=accepted.index)),
-        "source_unit": accepted.get("source_unit", pd.Series("kg", index=accepted.index)),
-        "fx_rate_to_inr": 1.0,
-        "price_inr_per_kg": accepted_prices.astype(float),
+        "source_currency": currencies,
+        "source_unit": units,
+        "fx_rate_to_inr": [item[1] for item in converted],
+        "fx_rate_date": [item[2].isoformat() for item in converted],
+        "price_inr_per_kg": [item[0] for item in converted],
         "source": "ScrapMonster",
         "source_file": str(path),
         "source_hash": source_hash,

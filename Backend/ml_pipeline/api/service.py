@@ -5,12 +5,13 @@ from __future__ import annotations
 from time import perf_counter
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from ..core.database import get_db, init_database
 from ..core.db_store import (
     finish_run,
-    load_feature_dataframe,
+    backfill_scrap_price_conversions,
     load_source_dataframes,
     persist_canonical_sources,
     persist_features,
@@ -31,8 +32,13 @@ from .schemas import (
     WeeklyAnalysisResponse,
 )
 from ..etl.canonical import build_canonical_datasets
+from ..etl.analysis_reports import build_analytical_summary
 from ..etl.quality_reports import build_quality_reports
 from ..etl.trainable import build_trainable_dataset
+from ..storage.cloudinary_reports import (
+    download_analysis_report,
+    upload_analysis_report,
+)
 from ..jobs.collect_daily import run_collection
 from ..pipelines.run_pipeline import run_full_ml_data_pipeline
 from ..utils import ML_JOB_TOKEN
@@ -94,20 +100,44 @@ def daily_ingestion(
         persistence = persist_canonical_sources(
             db, canonical["scrap"], canonical["mcx"], canonical["reference"]
         )
-        details = {"collection": collection, "manifest": canonical["manifest"]}
+        legacy_conversions = backfill_scrap_price_conversions(db)
+        sources = load_source_dataframes(db)
+        trainable = build_trainable_dataset(
+            sources["scrap"], sources["mcx"], persist_artifacts=False
+        )
+        analysis_summary = build_analytical_summary(
+            sources,
+            trainable["dataset"],
+            persistence,
+            job_type="daily_ingestion",
+            legacy_rows_converted=legacy_conversions,
+        )
+        report_reference = upload_analysis_report(
+            "daily",
+            run.started_at,
+            run.id,
+            analysis_summary,
+        )
+        details = {
+            "collection": collection,
+            "manifest": canonical["manifest"],
+            "legacy_scrap_rows_converted": legacy_conversions,
+            "analysis_report": report_reference,
+        }
         finish_run(
             db,
             run,
             "succeeded",
             details=details,
             rows_read=len(canonical["scrap"]),
-            rows_written=persistence["inserted"],
+            rows_written=persistence["inserted"] + persistence["updated"] + legacy_conversions,
         )
         return DailyIngestionResponse(
             status="succeeded",
             run_id=run.id,
             persistence=persistence,
             details=details,
+            analysis_report=report_reference,
         )
     except Exception as exc:
         finish_run(db, run, "failed", error_message=str(exc))
@@ -129,25 +159,33 @@ def feature_engineering(
         raise HTTPException(status_code=409, detail="Feature engineering is already running") from exc
     run = start_run(db, "feature_engineering")
     try:
+        legacy_conversions = backfill_scrap_price_conversions(db)
         persisted_sources = load_source_dataframes(db)
         result = build_trainable_dataset(
             scrap=persisted_sources["scrap"],
             mcx=persisted_sources["mcx"],
+            persist_artifacts=False,
         )
         persistence = persist_features(db, result["dataset"])
         finish_run(
             db,
             run,
             "succeeded",
-            details=result["eligibility"],
+            details={
+                **result["eligibility"],
+                "legacy_scrap_rows_converted": legacy_conversions,
+            },
             rows_read=len(result["dataset"]),
-            rows_written=persistence["inserted"],
+            rows_written=persistence["inserted"] + persistence["updated"],
         )
         return FeatureEngineeringResponse(
             status="succeeded",
             run_id=run.id,
             persistence=persistence,
-            eligibility=result["eligibility"],
+            eligibility={
+                **result["eligibility"],
+                "legacy_scrap_rows_converted": legacy_conversions,
+            },
         )
     except Exception as exc:
         finish_run(db, run, "failed", error_message=str(exc))
@@ -169,12 +207,32 @@ def weekly_analysis(
         raise HTTPException(status_code=409, detail="Weekly analysis is already running") from exc
     run = start_run(db, "weekly_analysis")
     try:
+        legacy_conversions = backfill_scrap_price_conversions(db)
         sources = load_source_dataframes(db)
-        result = build_trainable_dataset(sources["scrap"], sources["mcx"])
+        result = build_trainable_dataset(
+            sources["scrap"], sources["mcx"], persist_artifacts=False
+        )
         persistence = persist_features(db, result["dataset"])
+        analysis_summary = build_analytical_summary(
+            sources,
+            result["dataset"],
+            persistence,
+            job_type="weekly_analysis",
+            legacy_rows_converted=legacy_conversions,
+        )
+        report_reference = upload_analysis_report(
+            "weekly",
+            run.started_at,
+            run.id,
+            analysis_summary,
+        )
         finish_run(
-            db, run, "succeeded", details=result["eligibility"],
-            rows_read=len(result["dataset"]), rows_written=persistence["inserted"],
+            db, run, "succeeded", details={
+                "eligibility": result["eligibility"],
+                "analysis_report": report_reference,
+            },
+            rows_read=len(result["dataset"]),
+            rows_written=persistence["inserted"] + persistence["updated"],
         )
         return WeeklyAnalysisResponse(
             status="succeeded",
@@ -183,7 +241,10 @@ def weekly_analysis(
                 "source_rows": {key: len(value) for key, value in sources.items()},
                 "feature_persistence": persistence,
                 "eligibility": result["eligibility"],
+                "legacy_scrap_rows_converted": legacy_conversions,
+                "analysis_report": report_reference,
             },
+            analysis_report=report_reference,
         )
     except Exception as exc:
         finish_run(db, run, "failed", error_message=str(exc))
@@ -206,14 +267,66 @@ def train(
         raise HTTPException(status_code=409, detail="Training is already running") from exc
     run = start_run(db, "train")
     try:
-        result = retrain(load_feature_dataframe(db), db=db)
-        finish_run(db, run, "succeeded", details=result, rows_written=0)
+        legacy_conversions = backfill_scrap_price_conversions(db)
+        sources = load_source_dataframes(db)
+        dataset_result = build_trainable_dataset(
+            sources["scrap"], sources["mcx"], persist_artifacts=False
+        )
+        persistence = persist_features(db, dataset_result["dataset"])
+        result = retrain(dataset_result["dataset"], db=db)
+        analysis_summary = build_analytical_summary(
+            sources,
+            dataset_result["dataset"],
+            persistence,
+            job_type="monthly_training",
+            legacy_rows_converted=legacy_conversions,
+        )
+        analysis_summary["training_result"] = result
+        report_reference = upload_analysis_report(
+            "monthly",
+            run.started_at,
+            run.id,
+            analysis_summary,
+        )
+        result["feature_persistence"] = persistence
+        result["legacy_scrap_rows_converted"] = legacy_conversions
+        result["analysis_report"] = report_reference
+        finish_run(
+            db,
+            run,
+            "succeeded",
+            details=result,
+            rows_written=persistence["inserted"] + persistence["updated"],
+        )
         return TrainingResponse(**result)
     except Exception as exc:
         finish_run(db, run, "failed", error_message=str(exc))
         raise HTTPException(status_code=500, detail="Training failed") from exc
     finally:
         lock.__exit__(None, None, None)
+
+
+@app.get("/reports/{run_id}")
+def analysis_report(
+    run_id: int,
+    _: None = Depends(require_job_token),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    run = db.get(PipelineRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Pipeline run not found")
+    details = run.details or {}
+    reference = details.get("analysis_report")
+    if not isinstance(reference, dict):
+        raise HTTPException(status_code=404, detail="Analysis report is not available for this run")
+    try:
+        report = download_analysis_report(reference)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Stored analysis report is invalid") from exc
+    except Exception as exc:
+        logger.exception("Could not retrieve analysis report for run %s", run_id)
+        raise HTTPException(status_code=502, detail="Could not retrieve analysis report") from exc
+    return JSONResponse(content=report)
 
 
 @app.get("/jobs/{run_id}", response_model=JobStatusResponse)
