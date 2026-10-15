@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from .db_models import FeatureObservation, PipelineRun, SourceObservation
 from ..etl.pipeline_config import FEATURE_VERSION
 from ..etl.currency import convert_to_inr_per_kg
+from ..etl.source_records import deduplicate_source_records
 
 
 def start_run(db: Session, job_type: str) -> PipelineRun:
@@ -99,6 +100,7 @@ def persist_canonical_sources(
     if not records:
         return {"attempted": 0, "inserted": 0, "updated": 0, "skipped": 0}
 
+    attempted = len(records)
     key_columns = (
         SourceObservation.source,
         SourceObservation.observation_date,
@@ -107,6 +109,9 @@ def persist_canonical_sources(
         SourceObservation.commodity,
         SourceObservation.ticker,
         SourceObservation.source_hash,
+    )
+    records, duplicate_rows = deduplicate_source_records(
+        records, tuple(column.key for column in key_columns)
     )
     inserted = 0
     updated = 0
@@ -160,10 +165,10 @@ def persist_canonical_sources(
         db.rollback()
         raise
     return {
-        "attempted": len(records),
+        "attempted": attempted,
         "inserted": inserted,
         "updated": updated,
-        "skipped": len(records) - inserted - updated,
+        "skipped": duplicate_rows + len(records) - inserted - updated,
     }
 
 

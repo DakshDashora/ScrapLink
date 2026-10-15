@@ -48,6 +48,32 @@ app = FastAPI(title="ScrapLink ML Pipeline Service", version="1.0.0")
 logger.info("ML FastAPI application object created")
 
 
+def _upload_report_with_status(
+    category: str,
+    run: PipelineRun,
+    summary: dict,
+) -> dict[str, str]:
+    try:
+        return upload_analysis_report(
+            category,
+            run.started_at,
+            run.id,
+            summary,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Could not upload %s analysis report for run %s",
+            category,
+            run.id,
+        )
+        return {
+            "status": "failed",
+            "category": category,
+            "run_id": str(run.id),
+            "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+        }
+
+
 def require_job_token(x_ml_job_token: str | None = Header(default=None)) -> None:
     if not ML_JOB_TOKEN or x_ml_job_token != ML_JOB_TOKEN:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid ML job token")
@@ -112,11 +138,8 @@ def daily_ingestion(
             job_type="daily_ingestion",
             legacy_rows_converted=legacy_conversions,
         )
-        report_reference = upload_analysis_report(
-            "daily",
-            run.started_at,
-            run.id,
-            analysis_summary,
+        report_reference = _upload_report_with_status(
+            "daily", run, analysis_summary
         )
         details = {
             "collection": collection,
@@ -221,11 +244,8 @@ def weekly_analysis(
             job_type="weekly_analysis",
             legacy_rows_converted=legacy_conversions,
         )
-        report_reference = upload_analysis_report(
-            "weekly",
-            run.started_at,
-            run.id,
-            analysis_summary,
+        report_reference = _upload_report_with_status(
+            "weekly", run, analysis_summary
         )
         finish_run(
             db, run, "succeeded", details={
@@ -283,11 +303,8 @@ def train(
             legacy_rows_converted=legacy_conversions,
         )
         analysis_summary["training_result"] = result
-        report_reference = upload_analysis_report(
-            "monthly",
-            run.started_at,
-            run.id,
-            analysis_summary,
+        report_reference = _upload_report_with_status(
+            "monthly", run, analysis_summary
         )
         result["feature_persistence"] = persistence
         result["legacy_scrap_rows_converted"] = legacy_conversions
@@ -320,6 +337,11 @@ def analysis_report(
     reference = details.get("analysis_report")
     if not isinstance(reference, dict):
         raise HTTPException(status_code=404, detail="Analysis report is not available for this run")
+    if reference.get("status") == "failed":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Analysis report upload failed: {reference.get('error', 'unknown error')}",
+        )
     try:
         report = download_analysis_report(reference)
     except (FileNotFoundError, ValueError) as exc:

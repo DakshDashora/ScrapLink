@@ -84,6 +84,7 @@ def upload_analysis_report(
         raise ValueError("Uploaded analysis report checksum verification failed")
 
     return {
+        "status": "uploaded",
         "category": category,
         "report_date_utc": date_path,
         "run_id": str(run_id),
