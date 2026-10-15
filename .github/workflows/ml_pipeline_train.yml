@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   train-model:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       ML_PIPELINE_URL: https://scraplink-q4mo.onrender.com
