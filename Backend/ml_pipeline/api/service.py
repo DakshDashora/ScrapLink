@@ -212,6 +212,7 @@ def feature_engineering(
             },
         )
     except Exception as exc:
+        logger.exception("Feature engineering failed for run %s", run.id)
         finish_run(db, run, "failed", error_message=str(exc))
         raise HTTPException(status_code=500, detail="Feature engineering failed") from exc
     finally:
@@ -268,6 +269,7 @@ def weekly_analysis(
             analysis_report=report_reference,
         )
     except Exception as exc:
+        logger.exception("Weekly analysis failed for run %s", run.id)
         finish_run(db, run, "failed", error_message=str(exc))
         raise HTTPException(status_code=500, detail="Weekly analysis failed") from exc
     finally:
@@ -318,6 +320,7 @@ def train(
         )
         return TrainingResponse(**result)
     except Exception as exc:
+        logger.exception("Training failed for run %s", run.id)
         finish_run(db, run, "failed", error_message=str(exc))
         raise HTTPException(status_code=500, detail="Training failed") from exc
     finally:

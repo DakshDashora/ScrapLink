@@ -76,7 +76,7 @@ RANDOM_SEED = 42
 PROMOTION_MAX_VALIDATION_MAE = _configured_float(
     "ML_PROMOTION_MAX_VALIDATION_MAE", float("inf")
 )
-YAHOO_TICKERS_JSON = '{"HG=F":"Copper","ALI=F":"Aluminium","ZNC=F":"Zinc","PB=F":"Lead"}'
+YAHOO_TICKERS_JSON = '{"HG=F":"Copper","ALI=F":"Aluminium","ZNC=F":"Zinc"}'
 YAHOO_TICKERS = _configured_tickers()
 YAHOO_PERIOD = "max"
 YAHOO_DAILY_PERIOD = "5d"

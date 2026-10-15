@@ -241,6 +241,7 @@ def persist_features(db: Session, dataset: pd.DataFrame) -> dict[str, int]:
     if not records:
         return {"attempted": 0, "inserted": 0, "updated": 0, "skipped": 0}
 
+    attempted = len(records)
     key_columns = (
         FeatureObservation.target_source,
         FeatureObservation.observation_date,
@@ -248,40 +249,46 @@ def persist_features(db: Session, dataset: pd.DataFrame) -> dict[str, int]:
         FeatureObservation.scrap_type,
         FeatureObservation.feature_version,
     )
-    keys = [
-        (
-            record["target_source"],
-            record["observation_date"],
-            record["material"],
-            record["scrap_type"],
-            record["feature_version"],
-        )
-        for record in records
-    ]
-    existing = set(
-        db.execute(select(*key_columns).where(tuple_(*key_columns).in_(keys))).all()
+    records, duplicate_rows = deduplicate_source_records(
+        records, tuple(column.key for column in key_columns)
     )
-    statement = pg_insert(FeatureObservation).values(records)
-    excluded = statement.excluded
-    statement = statement.on_conflict_do_update(
-        constraint="uq_ml_feature_observation",
-        set_={
-            "target_price_inr_per_kg": excluded.target_price_inr_per_kg,
-            "features": excluded.features,
-        },
-    )
+
+    inserted = 0
+    updated = 0
     try:
-        db.execute(statement)
+        for offset in range(0, len(records), 400):
+            batch = records[offset : offset + 400]
+            batch_keys = [
+                tuple(record[column.key] for column in key_columns)
+                for record in batch
+            ]
+            existing = set(
+                db.execute(
+                    select(*key_columns).where(tuple_(*key_columns).in_(batch_keys))
+                ).all()
+            )
+            statement = pg_insert(FeatureObservation).values(batch)
+            excluded_stmt = statement.excluded
+            statement = statement.on_conflict_do_update(
+                constraint="uq_ml_feature_observation",
+                set_={
+                    "target_price_inr_per_kg": excluded_stmt.target_price_inr_per_kg,
+                    "features": excluded_stmt.features,
+                },
+            )
+            db.execute(statement)
+            updated += len(existing)
+            inserted += max(len(batch) - len(existing), 0)
         db.commit()
     except Exception:
         db.rollback()
         raise
-    updated = len(existing)
+
     return {
-        "attempted": len(records),
-        "inserted": len(records) - updated,
+        "attempted": attempted,
+        "inserted": inserted,
         "updated": updated,
-        "skipped": 0,
+        "skipped": duplicate_rows,
     }
 
 
@@ -317,6 +324,10 @@ def load_source_dataframes(db: Session) -> dict[str, pd.DataFrame]:
     scrap["is_synthetic"] = False
     scrap["market"] = pd.NA
     scrap["ingestion_timestamp"] = pd.NA
+    if not scrap.empty:
+        scrap = scrap.drop_duplicates(
+            ["observation_date", "material", "scrap_type"], keep="last"
+        ).reset_index(drop=True)
 
     mcx = all_sources[all_sources["source"] == "MCX"].copy()
     mcx["instrument"] = pd.NA
