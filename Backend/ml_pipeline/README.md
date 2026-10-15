@@ -33,6 +33,9 @@ reports as private Cloudinary raw assets:
 PostgreSQL `ml_pipeline_runs.details` stores only the report category, Cloudinary
 public ID, report date, format, and SHA-256 checksum. Retrieve the report with
 the protected `GET /reports/{run_id}` endpoint using `X-ML-Job-Token`. The job
-response also includes its report reference. On startup, existing inline
+response also includes its report reference. If report upload fails, the
+pipeline still records its source/data result and returns an explicit failed
+report status and error; configure all three ML-specific Cloudinary credentials
+on the deployed service to enable report storage. On startup, existing inline
 `analysis_summary` values are removed from run details to reduce database
 storage; old reports without a Cloudinary reference are not migrated.
