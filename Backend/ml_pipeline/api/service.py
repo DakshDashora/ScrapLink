@@ -140,6 +140,7 @@ def daily_ingestion(
             analysis_report=report_reference,
         )
     except Exception as exc:
+        logger.exception("Daily ingestion failed for run %s", run.id)
         finish_run(db, run, "failed", error_message=str(exc))
         raise HTTPException(status_code=500, detail="Daily ingestion failed") from exc
     finally:

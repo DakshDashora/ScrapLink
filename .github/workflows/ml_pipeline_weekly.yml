@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   weekly-analysis:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       ML_PIPELINE_URL: https://scraplink-q4mo.onrender.com
