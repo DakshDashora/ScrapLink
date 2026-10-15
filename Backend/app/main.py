@@ -9,6 +9,7 @@ from app.models import (
     User, Organization, OrganizationMember, OTPRecord,
     ScrapCategory, ScrapListing, ListingMedia
 )
+from app.routers.prediction import router as prediction_router
 import uuid
 
 
@@ -35,6 +36,8 @@ app.include_router(otp_router)
 app.include_router(org_router)
 app.include_router(listings_router)
 app.include_router(categories_router)
+app.include_router(prediction_router)
+
 
 
 def seed_categories_if_empty():
