@@ -5,6 +5,8 @@ from app.models.otp import OTPRecord
 from app.models.scrap_category import ScrapCategory
 from app.models.scrap_listing import ScrapListing, ListingStatus, ListingUnit
 from app.models.listing_media import ListingMedia
+from app.models.buyer_requirement import BuyerRequirement, RequirementStatus, RequirementUnit  
+
 
 __all__ = [
     "User",
@@ -15,5 +17,8 @@ __all__ = [
     "ScrapListing",
     "ListingStatus",
     "ListingUnit",
-    "ListingMedia"
+    "ListingMedia",
+    "BuyerRequirement",       
+    "RequirementStatus",      
+    "RequirementUnit",   
 ]
