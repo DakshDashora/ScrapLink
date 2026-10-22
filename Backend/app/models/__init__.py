@@ -7,6 +7,7 @@ from app.models.scrap_listing import ScrapListing, ListingStatus, ListingUnit
 from app.models.listing_media import ListingMedia
 from app.models.buyer_requirement import BuyerRequirement, RequirementStatus, RequirementUnit  
 from app.models.requirement_embedding import RequirementEmbedding
+from app.models.listing_embedding import ListingEmbedding
 
 
 
@@ -23,5 +24,6 @@ __all__ = [
     "BuyerRequirement",       
     "RequirementStatus",      
     "RequirementUnit",   
-    "RequirementEmbedding"
+    "RequirementEmbedding",
+    "ListingEmbedding"
 ]
