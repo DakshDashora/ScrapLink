@@ -1,0 +1,20 @@
+{
+  "model_version": "isoforest-v1.0.0-20261021",
+  "algorithm": "IsolationForest",
+  "contamination": 0.1,
+  "n_estimators": 100,
+  "feature_names": [
+    "price_ratio_to_benchmark",
+    "log_quantity_kg",
+    "log_order_value_inr",
+    "has_grade",
+    "has_description",
+    "description_length_capped",
+    "has_coordinates",
+    "is_standard_unit"
+  ],
+  "trained_records_count": 19,
+  "created_at": "2026-10-21T16:16:28.558092+00:00",
+  "status": "active",
+  "purpose": "Decision-support listing anomaly detection"
+}
