@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchListingById, clearCurrent } from '../../redux/slices/listingSlice';
 import PriceRecommendation from '../../components/listing/PriceRecommendation';
 import MapView from '../../components/map/MapView';
+import TrustIndicator from '../../components/trust/TrustIndicator';
 
 const ListingDetails = () => {
   const { id } = useParams();
@@ -56,7 +57,7 @@ const ListingDetails = () => {
           <p><strong>Asking Price:</strong> {current.asking_price ? `₹ ${Number(current.asking_price).toLocaleString()}` : 'On request'}</p>
           <p><strong>Location:</strong> {current.location?.city || current.location?.state || '—'}</p>
           {current.description && <p className="description">{current.description}</p>}
-
+          <TrustIndicator listingId={current.id} />
           <PriceRecommendation listing={current} />
         </div>
       </div>
