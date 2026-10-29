@@ -25,6 +25,12 @@ import ListingDetails from '../pages/buyer/ListingDetails';
 import MapDiscovery from '../pages/buyer/MapDiscovery';
 import CreateOrganization from '../pages/organisation/Createorganisation';
 
+import MyRequirements from '../pages/buyer/MyRequirements';
+import CreateRequirement from '../pages/buyer/CreateRequirement';
+import EditRequirement from '../pages/buyer/EditRequirement';
+import RequirementDetails from '../pages/buyer/RequirementDetails';
+import MatchAlerts from '../pages/buyer/MatchAlerts';
+
 import '../styles/global.css';
 import '../styles/listing.css';
 
@@ -87,6 +93,48 @@ function App() {
           </RoleRoute>
         }
       />
+
+      <Route
+        path="/buyer/requirements"
+        element={
+          <RoleRoute allow={['Buyer', 'Admin']}>
+            <MyRequirements />
+          </RoleRoute>
+        }
+      />
+      <Route
+        path="/buyer/requirements/new"
+        element={
+          <RoleRoute allow={['Buyer', 'Admin']}>
+            <CreateRequirement />
+          </RoleRoute>
+        }
+      />
+      <Route
+        path="/buyer/requirements/:id"
+        element={
+          <RoleRoute allow={['Buyer', 'Admin']}>
+            <RequirementDetails />
+          </RoleRoute>
+        }
+      />
+      <Route
+        path="/buyer/requirements/:id/edit"
+        element={
+          <RoleRoute allow={['Buyer', 'Admin']}>
+            <EditRequirement />
+          </RoleRoute>
+        }
+      />
+      <Route
+        path="/buyer/match-alerts"
+        element={
+          <RoleRoute allow={['Buyer', 'Admin']}>
+            <MatchAlerts />
+          </RoleRoute>
+        }
+      />
+
     </Routes>
 
   );
