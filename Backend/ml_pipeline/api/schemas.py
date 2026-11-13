@@ -20,6 +20,7 @@ class JobTriggerRequest(StrictSchema):
 
 class PredictionRequest(StrictSchema):
     commodity: StrictStr = Field(min_length=1, max_length=128)
+    scrap_type: StrictStr | None = Field(default=None, min_length=1, max_length=256)
     lag_1: StrictFloat | None = Field(default=None, ge=0)
     lag_7: StrictFloat | None = Field(default=None, ge=0)
     lag_14: StrictFloat | None = Field(default=None, ge=0)
@@ -47,6 +48,7 @@ class HealthResponse(StrictSchema):
 class PredictionResponse(StrictSchema):
     status: Literal["success"]
     commodity: StrictStr
+    scrap_type: StrictStr
     estimated_price_p10_inr_per_kg: StrictFloat = Field(ge=0)
     estimated_price_p50_inr_per_kg: StrictFloat = Field(ge=0)
     estimated_price_p90_inr_per_kg: StrictFloat = Field(ge=0)
@@ -95,6 +97,10 @@ class TrainingResponse(StrictSchema):
     minimum_collection_dates: StrictInt | None = Field(default=None, ge=0)
     eligible_rows: StrictInt | None = Field(default=None, ge=0)
     minimum_training_rows: StrictInt | None = Field(default=None, ge=0)
+    materials_trained: StrictInt | None = Field(default=None, ge=0)
+    materials_skipped: list[dict[str, Any]] | None = None
+    missing_materials: list[StrictStr] | None = None
+    minimums: dict[str, StrictInt] | None = None
     validation_mae: StrictFloat | None = Field(default=None, ge=0)
     maximum_validation_mae: StrictFloat | None = Field(default=None, ge=0)
     active_validation_mae: StrictFloat | None = Field(default=None, ge=0)

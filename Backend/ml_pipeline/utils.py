@@ -60,6 +60,7 @@ def _configured_tickers() -> dict[str, str]:
 PIPELINE_VERSION = "3.0.0"
 SCHEMA_VERSION = "2.0.0"
 FEATURE_VERSION = "3.0.0"
+MODEL_CONTRACT_VERSION = "2.0.0"
 REFERENCE_FEATURE_VERSION = "1.0.0"
 DATA_DIR = ML_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"
