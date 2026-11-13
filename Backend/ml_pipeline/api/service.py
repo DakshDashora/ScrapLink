@@ -361,7 +361,8 @@ def export_trainable_dataset(
         )
         dataset = result["dataset"]
         export_columns = [
-            "observation_date", "is_trainable", "price_inr_per_kg",
+            "observation_date", "material", "scrap_type", "is_trainable",
+            "price_inr_per_kg",
             *result["schema"]["feature_names"],
         ]
         export_id = uuid4().hex
