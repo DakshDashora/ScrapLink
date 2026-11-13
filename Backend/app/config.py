@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: Optional[str] = None
     CLOUDINARY_API_SECRET: Optional[str] = None
 
-    ML_SERVICE_URL: Optional[str] = None
-    ML_JOB_TOKEN: Optional[str] = None
+    ML_SERVICE_URL: str = "https://scraplink-q4mo.onrender.com"
+    ML_JOB_TOKEN: str
     
     # ML/Data
     COMMODITY_DATA_PATH: str = "./data/commodity_data.csv"

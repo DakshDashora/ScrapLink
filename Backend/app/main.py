@@ -11,6 +11,7 @@ from app.models import (
 )
 from app.routers.requirements import router as requirements_router
 from app.routers.prediction import router as prediction_router
+
 import uuid
 
 
