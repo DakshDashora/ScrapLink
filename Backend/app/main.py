@@ -11,6 +11,7 @@ from app.models import (
 )
 from app.routers.requirements import router as requirements_router
 from app.routers.prediction import router as prediction_router
+from app.routers.trust import router as trust_router
 
 import uuid
 
@@ -40,7 +41,7 @@ app.include_router(listings_router)
 app.include_router(categories_router)
 app.include_router(prediction_router)
 app.include_router(requirements_router)
-
+app.include_router(trust_router)
 
 
 
