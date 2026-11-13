@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import tempfile
 from time import perf_counter
+from pathlib import Path
+from uuid import uuid4
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -30,6 +33,13 @@ from .schemas import (
     PredictionResponse,
     TrainingResponse,
     WeeklyAnalysisResponse,
+    EmbeddingRequest,
+    EmbeddingResponse,
+    MatchRequest,
+    MatchResponse,
+    RankedMatchItem,
+    TrustScoreRequest,
+    TrustScoreResponse,
 )
 from ..etl.canonical import build_canonical_datasets
 from ..etl.analysis_reports import build_analytical_summary
@@ -39,10 +49,20 @@ from ..storage.cloudinary_reports import (
     download_analysis_report,
     upload_analysis_report,
 )
+from ..storage.cloudinary_models import _cloudinary, _private_download_url
 from ..jobs.collect_daily import run_collection
 from ..pipelines.run_pipeline import run_full_ml_data_pipeline
 from ..utils import ML_JOB_TOKEN
 from .predict_service import get_price_prediction
+from ..matching.text_normalizer import build_matching_text
+from ..matching.embedding_engine import (
+    generate_embedding,
+    generate_batch_embeddings,
+    EMBEDDING_VERSION,
+    EMBEDDING_DIM,
+)
+from ..matching.vector_matcher import rank_candidates
+from ..trust.trust_service import evaluate_listing_trust
 
 app = FastAPI(title="ScrapLink ML Pipeline Service", version="1.0.0")
 logger.info("ML FastAPI application object created")
@@ -327,6 +347,53 @@ def train(
         lock.__exit__(None, None, None)
 
 
+@app.post("/jobs/export-trainable-dataset")
+def export_trainable_dataset(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_job_token),
+) -> dict[str, str | int]:
+    try:
+        sources = load_source_dataframes(db)
+        result = build_trainable_dataset(
+            sources["scrap"],
+            sources["mcx"],
+            persist_artifacts=False,
+        )
+        dataset = result["dataset"]
+        export_columns = [
+            "observation_date", "material", "scrap_type", "is_trainable",
+            "price_inr_per_kg",
+            *result["schema"]["feature_names"],
+        ]
+        export_id = uuid4().hex
+        public_id = f"exports/trainable_datasets/{export_id}.csv"
+        with tempfile.TemporaryDirectory(prefix="scraplink-dataset-export-") as temporary:
+            csv_path = Path(temporary) / "trainable_dataset.csv"
+            dataset[export_columns].to_csv(csv_path, index=False)
+            uploaded = _cloudinary().uploader.upload(
+                str(csv_path),
+                resource_type="raw",
+                type="private",
+                public_id=public_id,
+                overwrite=False,
+                unique_filename=False,
+                use_filename=False,
+            )
+        if uploaded.get("public_id") != public_id:
+            raise RuntimeError("Cloudinary returned an unexpected dataset export ID")
+        return {
+            "status": "uploaded",
+            "rows": int(len(dataset)),
+            "download_url": _private_download_url(public_id),
+            "url_expires_in_seconds": 300,
+        }
+    except Exception as exc:
+        logger.exception("Trainable dataset export failed")
+        raise HTTPException(
+            status_code=500, detail="Trainable dataset export failed"
+        ) from exc
+
+
 @app.get("/reports/{run_id}")
 def analysis_report(
     run_id: int,
@@ -375,6 +442,122 @@ def job_status(
         started_at=run.started_at.isoformat(),
         completed_at=run.completed_at.isoformat() if run.completed_at else None,
     )
+
+
+
+
+# ==============================================================================
+# SPRINT 3: Semantic Matching & Trust Anomaly Endpoints
+# ==============================================================================
+
+@app.post("/embed", response_model=EmbeddingResponse)
+def embed_text(
+    request: EmbeddingRequest,
+    _: None = Depends(require_job_token),
+) -> EmbeddingResponse:
+    """Generate a 384-dimensional Sentence-BERT vector for matching text."""
+    if request.text:
+        text = request.text.strip()
+    else:
+        text = build_matching_text(
+            material_name=request.material_name or "",
+            category=request.category,
+            grade=request.grade,
+            description=request.description,
+            quantity=request.quantity,
+            unit=request.unit,
+            location=request.location,
+        )
+
+    vec = generate_embedding(text)
+    return EmbeddingResponse(
+        status="success",
+        model_version=EMBEDDING_VERSION,
+        embedding=vec,
+        dimension=len(vec),
+        normalized_text=text,
+    )
+
+
+@app.post("/matches/rank", response_model=MatchResponse)
+def rank_requirement_matches(
+    request: MatchRequest,
+    _: None = Depends(require_job_token),
+) -> MatchResponse:
+    """Compute semantic matches and apply hard constraints between requirement and listings."""
+    # 1. Resolve requirement embedding
+    if request.requirement_vector and len(request.requirement_vector) > 0:
+        req_vec = request.requirement_vector
+    elif request.requirement_text:
+        req_vec = generate_embedding(request.requirement_text)
+    else:
+        norm_text = build_matching_text(
+            material_name=request.material_name or "",
+            category=request.category,
+            grade=request.grade,
+            description=request.description,
+            quantity=request.quantity,
+            unit=request.unit,
+            location=request.location,
+        )
+        req_vec = generate_embedding(norm_text)
+
+    # 2. Prepare candidate listings
+    prepared_candidates = []
+    for cand in request.candidate_listings:
+        c_dict = cand.model_dump()
+        if not c_dict.get("embedding"):
+            c_text = build_matching_text(
+                material_name=c_dict.get("material_name", ""),
+                category=c_dict.get("category"),
+                grade=c_dict.get("grade"),
+                description=c_dict.get("description"),
+                quantity=c_dict.get("quantity"),
+                unit=c_dict.get("unit"),
+                location=c_dict.get("location"),
+            )
+            c_dict["embedding"] = generate_embedding(c_text)
+        prepared_candidates.append(c_dict)
+
+    # 3. Rank candidates using cosine similarity & hard filters
+    ranked = rank_candidates(
+        requirement_vector=req_vec,
+        candidate_listings=prepared_candidates,
+        top_k=request.top_k,
+        min_similarity=request.min_similarity,
+        enforce_active_only=request.enforce_active_only,
+    )
+
+    ranked_items = [RankedMatchItem(**r) for r in ranked]
+
+    return MatchResponse(
+        status="success",
+        total_candidates_evaluated=len(request.candidate_listings),
+        matches_found=len(ranked_items),
+        top_matches=ranked_items,
+        model_version=EMBEDDING_VERSION,
+        disclaimer="Semantic matches are decision-support suggestions based on vector similarity and active marketplace filters.",
+    )
+
+
+@app.post("/trust/score", response_model=TrustScoreResponse)
+def score_listing_trust(
+    request: TrustScoreRequest,
+    _: None = Depends(require_job_token),
+) -> TrustScoreResponse:
+    """Evaluate listing trust and anomaly indicators via baseline Isolation Forest."""
+    result = evaluate_listing_trust(
+        material_name=request.material_name,
+        asking_price=request.asking_price,
+        quantity=request.quantity,
+        unit=request.unit,
+        category=request.category,
+        grade=request.grade,
+        description=request.description,
+        location=request.location,
+        benchmark_price=request.benchmark_price,
+    )
+    return TrustScoreResponse(**result)
 
 
 if __name__ == "__main__":

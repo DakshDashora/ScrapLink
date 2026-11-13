@@ -111,3 +111,122 @@ class JobStatusResponse(StrictSchema):
     error_message: StrictStr | None = None
     started_at: StrictStr
     completed_at: StrictStr | None = None
+
+
+# ==============================================================================
+# SPRINT 3: Semantic Matching & Trust/Anomaly Schemas
+# ==============================================================================
+
+class EmbeddingRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    text: str | None = None
+    material_name: str | None = None
+    category: str | None = None
+    grade: str | None = None
+    description: str | None = None
+    quantity: float | None = None
+    unit: str | None = None
+    location: Any = None
+
+
+class EmbeddingResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    status: Literal["success"]
+    model_version: str
+    embedding: list[float]
+    dimension: int
+    normalized_text: str
+
+
+class MatchCandidateListing(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    material_name: str
+    category: str | None = None
+    grade: str | None = None
+    description: str | None = None
+    quantity: float
+    unit: str = "kg"
+    asking_price: float | None = None
+    availability_status: str = "Active"
+    location: Any = None
+    embedding: list[float] | None = None
+
+
+class MatchRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    requirement_text: str | None = None
+    requirement_vector: list[float] | None = None
+    material_name: str | None = None
+    category: str | None = None
+    grade: str | None = None
+    description: str | None = None
+    quantity: float | None = None
+    unit: str | None = None
+    location: Any = None
+    candidate_listings: list[MatchCandidateListing]
+    top_k: int = 10
+    min_similarity: float = 0.30
+    enforce_active_only: bool = True
+
+
+class RankedMatchItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    listing_id: str
+    material_name: str
+    category: str | None = None
+    grade: str | None = None
+    quantity: float
+    unit: str
+    asking_price: float | None = None
+    location: Any = None
+    similarity_score: float
+    match_quality: str
+    hard_constraints_passed: bool
+
+
+class MatchResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    status: Literal["success"]
+    total_candidates_evaluated: int
+    matches_found: int
+    top_matches: list[RankedMatchItem]
+    model_version: str
+    disclaimer: str
+
+
+class TrustScoreRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    material_name: str
+    asking_price: float | None = None
+    quantity: float
+    unit: str = "kg"
+    category: str | None = None
+    grade: str | None = None
+    description: str | None = None
+    location: Any = None
+    benchmark_price: float | None = None
+
+
+class TrustScoreResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    status: Literal["success"]
+    indicator: str
+    is_unusual_pattern: bool
+    anomaly_score: float
+    confidence_level: str
+    flags: list[str]
+    buyer_guidance: str
+    features_evaluated: dict[str, float]
+    model_version: str
+    estimate_type: str
+    is_fraud_probability: bool
+    disclaimer: str

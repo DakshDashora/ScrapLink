@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logout } from '../../redux/slices/authSlices';
+import AlertBell from '../alerts/AlertBell';
 
 const DashboardLayout = () => {
   const dispatch = useDispatch();
@@ -17,7 +18,9 @@ const DashboardLayout = () => {
     <div className="dashboard-layout">
       <header className="dashboard-header">
         <div className="logo">ScrapLink</div>
+
         <nav className="top-nav">
+          {(role === 'Buyer' || role === 'Admin') && <AlertBell />}
           <span className="user-info">
             {user?.full_name || 'User'} · <strong>{role}</strong>
           </span>
@@ -43,6 +46,9 @@ const DashboardLayout = () => {
               <li className="section-label">Buyer</li>
               <li><NavLink to="/marketplace">Marketplace</NavLink></li>
               <li><NavLink to="/marketplace/map">Map Discovery</NavLink></li>
+              <li><NavLink to="/buyer/requirements">My Requirements</NavLink></li>
+              <li><NavLink to="/buyer/requirements/new">Create Requirement</NavLink></li>
+              <li><NavLink to="/buyer/match-alerts">Match Alerts</NavLink></li>
             </>
           )}
         </ul>

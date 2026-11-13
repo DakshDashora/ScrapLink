@@ -14,6 +14,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from ..core.db_store import load_source_dataframes
+from ..etl.canonical import _material_mapping
 from ..etl.pipeline_config import FEATURE_VERSION
 from ..etl.trainable import FEATURE_COLUMNS, build_trainable_dataset
 from ..training.model_registry import load_active_model_metadata
@@ -102,9 +103,14 @@ def _latest_database_features(db: Session, commodity: str) -> dict[str, Any] | N
         mcx=sources["mcx"],
         persist_artifacts=False,
     )["dataset"]
+    normalized_material = _material_mapping(commodity)[0]
     rows = trainable[
-        trainable["material"].astype(str).str.casefold() == commodity.casefold()
+        trainable["material"].astype(str).str.casefold() == normalized_material.casefold()
     ]
+    if rows.empty:
+        rows = trainable[
+            trainable["material"].astype(str).str.casefold() == commodity.casefold()
+        ]
     if rows.empty:
         return None
     return rows.sort_values("observation_date").iloc[-1].to_dict()

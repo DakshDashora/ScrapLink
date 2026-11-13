@@ -27,3 +27,4 @@ reportlab
 yfinance
 bcrypt
 resend[async]
+sentence-transformers
