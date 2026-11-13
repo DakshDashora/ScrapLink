@@ -9,8 +9,6 @@ from app.models.buyer_requirement import BuyerRequirement, RequirementStatus, Re
 from app.models.requirement_embedding import RequirementEmbedding
 from app.models.listing_embedding import ListingEmbedding
 
-
-
 __all__ = [
     "User",
     "Organization",

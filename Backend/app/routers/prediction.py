@@ -7,13 +7,11 @@ from app.models.user import User
 
 router = APIRouter(prefix="/api", tags=["Price Prediction"])
 
-
-# ============================================
-# REQUEST SCHEMA (Frontend → Your API)
-# ============================================
 class PredictionRequest(BaseModel):
     commodity: str = Field(..., min_length=1, max_length=128)
-    # Optional hints — pass through to ML if provided
+    scrap_type: str | None = None  # ✅ Added this based on Daksh's contract
+    
+    # Optional legacy hints
     lag_1: float | None = None
     lag_7: float | None = None
     lag_14: float | None = None
@@ -26,12 +24,10 @@ class PredictionRequest(BaseModel):
     pct_change_30: float | None = None
 
 
-# ============================================
-# RESPONSE SCHEMA (Your API → Frontend)
-# ============================================
 class PredictionResponse(BaseModel):
     status: str
     commodity: str
+    scrap_type: str  # ✅ Added this based on Daksh's contract
     estimated_price_p10_inr_per_kg: float
     estimated_price_p50_inr_per_kg: float
     estimated_price_p90_inr_per_kg: float
@@ -46,9 +42,6 @@ class PredictionResponse(BaseModel):
     disclaimer: str
 
 
-# ============================================
-# PROXY ENDPOINT
-# ============================================
 @router.post("/predict-price", response_model=PredictionResponse)
 async def predict_price(
     request: PredictionRequest,
@@ -67,6 +60,7 @@ async def predict_price(
 
     ml_url = f"{settings.ML_SERVICE_URL.rstrip('/')}/predict-price"
 
+    # exclude_none=True ensures we don't send nulls to Daksh's strict ML schema
     payload = request.model_dump(exclude_none=True)
 
     try:
@@ -91,9 +85,10 @@ async def predict_price(
             )
 
         if response.status_code == 422:
+            # 422 means the material or scrap_type wasn't found by the ML model
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid prediction input: {response.text}",
+                detail=f"Invalid material or missing history: {response.text}",
             )
 
         if response.status_code == 503:

@@ -9,7 +9,10 @@ from app.models import (
     User, Organization, OrganizationMember, OTPRecord,
     ScrapCategory, ScrapListing, ListingMedia
 )
+from app.routers.requirements import router as requirements_router
 from app.routers.prediction import router as prediction_router
+from app.routers.trust import router as trust_router
+
 import uuid
 
 
@@ -37,8 +40,27 @@ app.include_router(org_router)
 app.include_router(listings_router)
 app.include_router(categories_router)
 app.include_router(prediction_router)
+app.include_router(requirements_router)
+app.include_router(trust_router)
 
 
+
+from sqlalchemy import text
+
+def create_vector_indexes():
+    """Create HNSW indexes for pgvector if they don't exist"""
+    with engine.connect() as conn:
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS listing_embedding_hnsw_idx "
+            "ON listing_embeddings USING hnsw (embedding vector_cosine_ops);"
+        ))
+        # Index for requirements
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS requirement_embedding_hnsw_idx "
+            "ON requirement_embeddings USING hnsw (embedding vector_cosine_ops);"
+        ))
+        conn.commit()
+    print(" HNSW vector indexes verified/created")
 
 def seed_categories_if_empty():
     """Seed categories if the table is empty"""
@@ -46,10 +68,10 @@ def seed_categories_if_empty():
     try:
         count = db.query(ScrapCategory).count()
         if count > 0:
-            print(f"✅ Categories already seeded ({count} found)")
+            print(f" Categories already seeded ({count} found)")
             return
 
-        print("📂 Seeding categories...")
+        print(" Seeding categories...")
         categories = [
             {"name": "Steel", "description": "Carbon steel scrap, structural steel"},
             {"name": "Stainless Steel", "description": "Stainless steel 304, 316 grades"},
@@ -81,10 +103,10 @@ def seed_categories_if_empty():
             ))
 
         db.commit()
-        print(f"✅ Seeded {len(categories)} categories")
+        print(f" Seeded {len(categories)} categories")
     except Exception as e:
         db.rollback()
-        print(f"❌ Seeding error: {e}")
+        print(f" Seeding error: {e}")
     finally:
         db.close()
 
@@ -97,9 +119,9 @@ async def startup_event():
         print("Database initialized with pgvector")
 
         Base.metadata.create_all(bind=engine)
-        print("✅ Database tables created/verified")
-
-        # ✅ Call seed function after tables are created
+        print("Database tables created/verified")
+        create_vector_indexes()
+        
         seed_categories_if_empty()
 
     except Exception as e:
