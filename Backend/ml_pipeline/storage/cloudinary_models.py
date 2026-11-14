@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import tempfile
 from threading import Lock
@@ -19,15 +20,51 @@ from ..utils import (
     ML_CLOUDINARY_MODEL_FOLDER,
 )
 
-REQUIRED_ARTIFACTS = {
+BASE_ARTIFACTS = {
     "metadata.json",
     "feature_schema.json",
     "metrics.json",
+}
+LEGACY_MODEL_ARTIFACTS = {
     "model_p10.joblib",
     "model_p50.joblib",
     "model_p90.joblib",
 }
 _DOWNLOAD_LOCK = Lock()
+
+
+def _required_artifacts(feature_schema: Any) -> set[str]:
+    if not isinstance(feature_schema, dict):
+        raise ValueError("Model feature schema must be a JSON object")
+    materials = feature_schema.get("materials")
+    if not isinstance(materials, dict) or not materials:
+        return BASE_ARTIFACTS | LEGACY_MODEL_ARTIFACTS
+
+    required = set(BASE_ARTIFACTS)
+    for material, definition in materials.items():
+        if not isinstance(material, str) or not material:
+            raise ValueError("Model feature schema contains an invalid material")
+        if not isinstance(definition, dict):
+            raise ValueError(f"Model feature schema for {material!r} is invalid")
+        artifacts = definition.get("artifact_files")
+        if not isinstance(artifacts, dict):
+            raise ValueError(f"Model feature schema for {material!r} has no artifacts")
+        material_artifacts: set[str] = set()
+        for quantile in ("p10", "p50", "p90"):
+            filename = artifacts.get(quantile)
+            if (
+                not isinstance(filename, str)
+                or Path(filename).name != filename
+                or not re.fullmatch(r"model_[a-f0-9]{16}_p(?:10|50|90)\.joblib", filename)
+                or not filename.endswith(f"_{quantile}.joblib")
+                or filename in material_artifacts
+            ):
+                raise ValueError(
+                    f"Model feature schema for {material!r} has an invalid {quantile} artifact"
+                )
+            material_artifacts.add(filename)
+            required.add(filename)
+    return required
 
 
 def _cloudinary():
@@ -91,9 +128,17 @@ def upload_model_artifacts(
     version = _validated_version(version)
     root = Path(directory)
     paths = sorted(path for path in root.rglob("*") if path.is_file())
-    missing = REQUIRED_ARTIFACTS - {path.name for path in paths}
+    schema_path = root / "feature_schema.json"
+    if not schema_path.is_file():
+        raise FileNotFoundError("Cannot upload model artifacts without feature_schema.json")
+    feature_schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    required = _required_artifacts(feature_schema)
+    missing = required - {path.name for path in paths}
     if missing:
         raise FileNotFoundError(f"Cannot upload incomplete model artifacts: {sorted(missing)}")
+    empty = [path.name for path in paths if path.name in required and path.stat().st_size == 0]
+    if empty:
+        raise FileNotFoundError(f"Cannot upload empty model artifacts: {sorted(empty)}")
 
     public_ids: dict[str, str] = {}
     checksums: dict[str, str] = {}
@@ -144,7 +189,8 @@ def _download_model_artifacts(metadata: dict[str, Any]) -> Path:
     checksums = metadata.get("artifact_checksums")
     if not isinstance(public_ids, dict) or not isinstance(checksums, dict):
         raise ValueError("Active model registry record has invalid artifact metadata")
-    if set(public_ids) != set(checksums) or not REQUIRED_ARTIFACTS.issubset(public_ids):
+    required = _required_artifacts(metadata.get("feature_schema"))
+    if set(public_ids) != set(checksums) or not required.issubset(public_ids):
         raise ValueError("Active model registry record is missing required model artifacts")
     for filename, public_id in public_ids.items():
         if not isinstance(filename, str) or Path(filename).name != filename:

@@ -8,8 +8,7 @@ from app.models.listing_media import ListingMedia
 from app.models.buyer_requirement import BuyerRequirement, RequirementStatus, RequirementUnit  
 from app.models.requirement_embedding import RequirementEmbedding
 from app.models.listing_embedding import ListingEmbedding
-
-
+from app.models.match_event import MatchEvent
 
 __all__ = [
     "User",
@@ -25,5 +24,6 @@ __all__ = [
     "RequirementStatus",      
     "RequirementUnit",   
     "RequirementEmbedding",
-    "ListingEmbedding"
+    "ListingEmbedding",
+    "MatchEvent"
 ]

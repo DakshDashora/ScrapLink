@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import tempfile
 from time import perf_counter
+from pathlib import Path
+from uuid import uuid4
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -46,6 +49,7 @@ from ..storage.cloudinary_reports import (
     download_analysis_report,
     upload_analysis_report,
 )
+from ..storage.cloudinary_models import _cloudinary, _private_download_url
 from ..jobs.collect_daily import run_collection
 from ..pipelines.run_pipeline import run_full_ml_data_pipeline
 from ..utils import ML_JOB_TOKEN
@@ -341,6 +345,53 @@ def train(
         raise HTTPException(status_code=500, detail="Training failed") from exc
     finally:
         lock.__exit__(None, None, None)
+
+
+@app.post("/jobs/export-trainable-dataset")
+def export_trainable_dataset(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_job_token),
+) -> dict[str, str | int]:
+    try:
+        sources = load_source_dataframes(db)
+        result = build_trainable_dataset(
+            sources["scrap"],
+            sources["mcx"],
+            persist_artifacts=False,
+        )
+        dataset = result["dataset"]
+        export_columns = [
+            "observation_date", "material", "scrap_type", "is_trainable",
+            "price_inr_per_kg",
+            *result["schema"]["feature_names"],
+        ]
+        export_id = uuid4().hex
+        public_id = f"exports/trainable_datasets/{export_id}.csv"
+        with tempfile.TemporaryDirectory(prefix="scraplink-dataset-export-") as temporary:
+            csv_path = Path(temporary) / "trainable_dataset.csv"
+            dataset[export_columns].to_csv(csv_path, index=False)
+            uploaded = _cloudinary().uploader.upload(
+                str(csv_path),
+                resource_type="raw",
+                type="private",
+                public_id=public_id,
+                overwrite=False,
+                unique_filename=False,
+                use_filename=False,
+            )
+        if uploaded.get("public_id") != public_id:
+            raise RuntimeError("Cloudinary returned an unexpected dataset export ID")
+        return {
+            "status": "uploaded",
+            "rows": int(len(dataset)),
+            "download_url": _private_download_url(public_id),
+            "url_expires_in_seconds": 300,
+        }
+    except Exception as exc:
+        logger.exception("Trainable dataset export failed")
+        raise HTTPException(
+            status_code=500, detail="Trainable dataset export failed"
+        ) from exc
 
 
 @app.get("/reports/{run_id}")
