@@ -86,9 +86,9 @@ function App() {
         />
       </Route>
       <Route
-        path="organization/new"
+        path="/organization/new"
         element={
-          <RoleRoute allow={['Seller', 'Admin']}>
+          <RoleRoute allow={['Seller', 'Buyer', 'Admin']}>
             <CreateOrganization />
           </RoleRoute>
         }

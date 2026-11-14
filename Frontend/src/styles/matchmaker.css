@@ -171,3 +171,9 @@
 .trust-disclaimer {
   font-size: 0.72rem; color: #64748b; margin-top: 0.5rem; font-style: italic;
 }
+.inline-link {
+  color: #4f46e5; /* Matches your new modern theme */
+  font-weight: 700;
+  text-decoration: underline;
+  margin-left: 0.25rem;
+}
