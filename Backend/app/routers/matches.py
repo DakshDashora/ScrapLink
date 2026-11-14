@@ -14,7 +14,47 @@ from app.models.match_event import MatchEvent
 from app.schemas.match import RankedMatch
 
 
+
+
 router = APIRouter(prefix="/api/matches", tags=["Semantic Matching"])
+
+
+
+@router.get("/match-alerts")
+async def get_match_alerts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Fetch recent match alerts for the buyer's organization"""
+    # Get buyer's org
+    from app.models.organization_member import OrganizationMember
+    org = db.query(OrganizationMember).filter(OrganizationMember.user_id == current_user.id).first()
+    if not org:
+        raise HTTPException(status_code=400, detail="No organization found")
+
+    # Get requirements for this org
+    reqs = db.query(BuyerRequirement).filter(BuyerRequirement.buyer_org_id == org.organization_id).all()
+    req_ids = [r.id for r in reqs]
+
+    # Get recent matches for these requirements
+    events = db.query(MatchEvent).filter(
+        MatchEvent.requirement_id.in_(req_ids)
+    ).order_by(MatchEvent.created_at.desc()).limit(20).all()
+
+    alerts = []
+    for e in events:
+        listing = db.query(ScrapListing).filter(ScrapListing.id == e.listing_id).first()
+        if listing:
+            alerts.append({
+                "id": str(e.id),
+                "requirement_id": str(e.requirement_id),
+                "listing_id": str(e.listing_id),
+                "listing_name": listing.material_name,
+                "similarity_score": float(e.similarity_score),
+                "created_at": e.created_at.isoformat()
+            })
+
+    return {"status": "success", "alerts": alerts, "total": len(alerts)}
 
 @router.post("/{requirement_id}/refresh", response_model=MatchRankResponse)
 async def refresh_matches(
@@ -142,39 +182,3 @@ async def get_matches(
         "disclaimer": "Semantic matches are decision-support suggestions."
     }
 
-
-@router.get("/match-alerts")
-async def get_match_alerts(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Fetch recent match alerts for the buyer's organization"""
-    # Get buyer's org
-    from app.models.organization_member import OrganizationMember
-    org = db.query(OrganizationMember).filter(OrganizationMember.user_id == current_user.id).first()
-    if not org:
-        raise HTTPException(status_code=400, detail="No organization found")
-
-    # Get requirements for this org
-    reqs = db.query(BuyerRequirement).filter(BuyerRequirement.buyer_org_id == org.organization_id).all()
-    req_ids = [r.id for r in reqs]
-
-    # Get recent matches for these requirements
-    events = db.query(MatchEvent).filter(
-        MatchEvent.requirement_id.in_(req_ids)
-    ).order_by(MatchEvent.created_at.desc()).limit(20).all()
-
-    alerts = []
-    for e in events:
-        listing = db.query(ScrapListing).filter(ScrapListing.id == e.listing_id).first()
-        if listing:
-            alerts.append({
-                "id": str(e.id),
-                "requirement_id": str(e.requirement_id),
-                "listing_id": str(e.listing_id),
-                "listing_name": listing.material_name,
-                "similarity_score": float(e.similarity_score),
-                "created_at": e.created_at.isoformat()
-            })
-
-    return {"status": "success", "alerts": alerts, "total": len(alerts)}
