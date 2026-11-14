@@ -7,11 +7,14 @@ export const fetchRequirements = createAsyncThunk(
   'requirements/fetchAll',
   async (params = {}, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.get('/requirements/', { params });
+      // Updated to /api/requirements/
+      const { data } = await axiosInstance.get('/api/requirements/', { params });
+      
       // Handle { items: [...] } | { requirements: [...] } | array
       const items = Array.isArray(data)
         ? data
         : data.items || data.requirements || [];
+        
       return {
         items,
         total: data.total ?? items.length,
@@ -29,7 +32,8 @@ export const fetchRequirementById = createAsyncThunk(
   'requirements/fetchOne',
   async (id, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.get(`/requirements/${id}`);
+      // Updated to /api/requirements/{id}
+      const { data } = await axiosInstance.get(`/api/requirements/${id}`);
       return data;
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
@@ -41,7 +45,8 @@ export const createRequirement = createAsyncThunk(
   'requirements/create',
   async (payload, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.post('/requirements/', payload);
+      // Updated to /api/requirements/
+      const { data } = await axiosInstance.post('/api/requirements/', payload);
       return data;
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
@@ -53,7 +58,8 @@ export const updateRequirement = createAsyncThunk(
   'requirements/update',
   async ({ id, payload }, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.put(`/requirements/${id}`, payload);
+      // Updated to /api/requirements/{id}
+      const { data } = await axiosInstance.put(`/api/requirements/${id}`, payload);
       return data;
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
@@ -65,7 +71,9 @@ export const deactivateRequirement = createAsyncThunk(
   'requirements/deactivate',
   async (id, { rejectWithValue }) => {
     try {
-      await axiosInstance.delete(`/requirements/${id}`);
+      // Updated to /api/requirements/{id}
+      // Note: Backend returns 204 No Content, so we manually return the id
+      await axiosInstance.delete(`/api/requirements/${id}`);
       return id;
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
@@ -96,6 +104,7 @@ const requirementSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      // FETCH ALL
       .addCase(fetchRequirements.pending, (s) => { s.isLoading = true; s.error = null; })
       .addCase(fetchRequirements.fulfilled, (s, a) => {
         s.isLoading = false;
@@ -110,6 +119,7 @@ const requirementSlice = createSlice({
         s.error = a.payload?.detail || 'Failed to load requirements';
       })
 
+      // FETCH ONE
       .addCase(fetchRequirementById.pending, (s) => {
         s.isLoading = true; s.error = null; s.current = null;
       })
@@ -121,16 +131,18 @@ const requirementSlice = createSlice({
         s.error = a.payload?.detail || 'Failed to load requirement';
       })
 
+      // CREATE
       .addCase(createRequirement.pending, (s) => { s.isSaving = true; s.error = null; })
       .addCase(createRequirement.fulfilled, (s, a) => {
         s.isSaving = false;
-        s.items.unshift(a.payload);
+        s.items.unshift(a.payload); // Add to top of the list
       })
       .addCase(createRequirement.rejected, (s, a) => {
         s.isSaving = false;
         s.error = a.payload?.detail || 'Failed to create requirement';
       })
 
+      // UPDATE
       .addCase(updateRequirement.pending, (s) => { s.isSaving = true; s.error = null; })
       .addCase(updateRequirement.fulfilled, (s, a) => {
         s.isSaving = false;
@@ -143,10 +155,15 @@ const requirementSlice = createSlice({
         s.error = a.payload?.detail || 'Failed to update requirement';
       })
 
+      // DEACTIVATE
       .addCase(deactivateRequirement.fulfilled, (s, a) => {
+        // Change status to Closed locally so the UI updates instantly
         s.items = s.items.map((r) =>
           r.id === a.payload ? { ...r, status: 'Closed' } : r
         );
+        if (s.current && s.current.id === a.payload) {
+          s.current.status = 'Closed';
+        }
       });
   },
 });

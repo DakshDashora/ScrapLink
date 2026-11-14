@@ -141,7 +141,7 @@ export const predictPrice = createAsyncThunk(
   'listings/predictPrice',
   async (payload, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.post('/listings/predict-price', payload);
+      const { data } = await axiosInstance.post('/api/predict-price', payload);
       return data;
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
@@ -175,7 +175,9 @@ const initialState = {
   },
   current: null,
   mapMarkers: [],
-  prediction: null,
+  pricePrediction: null,
+  isPredicting: false,
+  predictError: null,
   isLoading: false,
   isSaving: false,
   isUploading: false,
@@ -294,12 +296,18 @@ const listingSlice = createSlice({
       })
 
       // prediction
-      .addCase(predictPrice.pending, (s) => { s.isLoading = true; s.error = null; })
-      .addCase(predictPrice.fulfilled, (s, a) => { s.isLoading = false; s.prediction = a.payload; })
+      .addCase(predictPrice.pending, (s) => {
+        s.isPredicting = true;
+        s.predictError = null;
+      })
+      .addCase(predictPrice.fulfilled, (s, a) => {
+        s.isPredicting = false;
+        s.pricePrediction = a.payload;
+      })
       .addCase(predictPrice.rejected, (s, a) => {
-        s.isLoading = false;
-        s.error = a.payload?.detail || 'Price prediction unavailable';
-      });
+        s.isPredicting = false;
+        s.predictError = a.payload?.detail || 'Failed to predict price';
+      })
   },
 });
 

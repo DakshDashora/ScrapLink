@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { Link,useNavigate } from 'react-router-dom';
 import { createRequirement, updateRequirement } from '../../redux/slices/requirementSlice';
 import { fetchCategories } from '../../redux/slices/categorySlice';
 
@@ -171,7 +171,19 @@ const RequirementForm = ({ initial, isEdit = false }) => {
         </div>
       </fieldset>
 
-      {error && <div className="error-message">{error}</div>}
+      {error && (
+  <div className="error-message">
+    {error}
+    {typeof error === 'string' && error.toLowerCase().includes('organization') && (
+      <>
+        {' '}
+        <Link to="/organization/new" className="inline-link">
+          → Create Organization
+        </Link>
+      </>
+    )}
+  </div>
+)}
 
       <div className="form-actions">
         <button type="submit" className="btn-primary" disabled={isSaving}>

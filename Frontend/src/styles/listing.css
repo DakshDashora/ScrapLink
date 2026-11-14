@@ -337,3 +337,96 @@
 .advanced-coords[open] summary {
   margin-bottom: 0.75rem;
 }
+/* ----- Price Predictor ----- */
+.price-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.suggest-price-btn {
+  align-self: flex-start;
+  background: #eef2ff;
+  color: #4f46e5;
+  border: 1px solid #c7d2fe;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.suggest-price-btn:hover:not(:disabled) {
+  background: #4f46e5;
+  color: white;
+}
+.suggest-price-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.prediction-result-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #4f46e5;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 0.5rem;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.prediction-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+}
+
+.trend-badge {
+  font-weight: 700;
+  color: #475569;
+}
+
+.prediction-price {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 0.25rem;
+}
+.prediction-price .unit {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.prediction-band {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-bottom: 1rem;
+}
+
+.apply-btn {
+  padding: 0.4rem 1rem;
+  font-size: 0.8rem;
+  width: 100%;
+}
+
+.prediction-disclaimer {
+  margin-top: 0.75rem;
+  font-size: 0.7rem;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.predict-error {
+  color: #dc2626;
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
