@@ -13,6 +13,7 @@ from app.routers.requirements import router as requirements_router
 from app.routers.prediction import router as prediction_router
 from app.routers.trust import router as trust_router
 from app.routers.matches import router as matches_router
+from app.routers.ml_options import router as ml_options_router
 
 
 import uuid
@@ -45,6 +46,8 @@ app.include_router(prediction_router)
 app.include_router(requirements_router)
 app.include_router(trust_router)
 app.include_router(matches_router)
+app.include_router(ml_options_router)
+
 
 
 
@@ -114,6 +117,52 @@ def seed_categories_if_empty():
     finally:
         db.close()
 
+def seed_ml_options_if_empty():
+    """Seed materials and scrap types for frontend dropdowns"""
+    from app.models.ml_reference import MLMaterial, MLScrapType
+    db = SessionLocal()
+    try:
+        if db.query(MLMaterial).count() == 0:
+            materials = [
+                "#1 Busheling", "6061 Extrusions", "6063 Extrusions", "Al/Cu Radiators", 
+                "Alternator", "Aluminium", "Brass", "Chrome Wheels", "Copper", 
+                "Grade OA Structural Plate", "Heater Cores", "Lead", "MLC Clips", 
+                "Nickel Cathode", "Rod Borings", "Romex® Wire", "Scrap Auto Batteries", 
+                "Scrap Electric Motors", "Shredded Auto Scrap", "Starters", "Steel", 
+                "Tin slab", "UBC", "Xmas Lights", "Zinc"
+            ]
+            for m in materials:
+                if m: db.add(MLMaterial(name=m))
+            
+        if db.query(MLScrapType).count() == 0:
+            scrap_types = [
+                "Copper Transformer Scrap", "Brass Radiator Ends", "Xmas Lights", "MLC Clips",
+                "HMS 80/20", "70/30 Brass Scrap", "Mixed Aluminum Turnings", "#1 Copper Bare Bright",
+                "Copper Tube", "80/20 Brass Scrap", "#1 Copper Wire and Tubing", "E.C. Aluminum Wire",
+                "Aluminum ingots", "#2 Copper Wire and Tubing", "Copper Radiators", "Copper utensil scrap",
+                "Scrap Electric Motors", "Braziery Copper", "#3 Copper - Light Copper", "Aluminum utensil scrap",
+                "6061 Extrusions", "Tin slab", "Al/Cu Radiators", "Copper heavy scrap", "Grade 1 Old Steel (#1 5 ft)",
+                "Mixed Brass", "UBC", "Grade OA Structural Plate", "#1 Busheling", "Aluminum Transformers",
+                "Lead Scrap", "Aluminum Radiators", "Rod Borings", "Aluminum Cuttings", "Lead Wheel Weights",
+                "Cast Iron Scrap", "Scrap Auto Batteries", "Starters", "#1 Bundle", "6063 Extrusions",
+                "Brass Radiator", "#1 HMS", "Grade 2 Old Steel (#2 2ft)", "Alternator", "Brass Cuttings",
+                "Copper  Dry Bright", "85/15 Brass Scrap", "Chrome Wheels", "Copper sheet cutting",
+                "Structural Steel", "Lead ingot", "Yellow Brass", "Copper cable scrap", "Lead Batteries",
+                "Heater Cores", "Brass utensil scrap", "Nickel Cathode", "Lead-Solid Lead", "Romex® Wire",
+                "Copper wire bars (HCL*)", "Shredded Auto Scrap", "Copper armeture", "Red Brass",
+                "356 Aluminum Wheels (Clean)"
+            ]
+            for st in scrap_types:
+                if st: db.add(MLScrapType(name=st))
+                
+        db.commit()
+        print("✅ ML Dropdown options seeded")
+    except Exception as e:
+        db.rollback()
+        print(f"❌ ML Dropdown seed error: {e}")
+    finally:
+        db.close()
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -125,6 +174,7 @@ async def startup_event():
         print("Database tables created/verified")
         create_vector_indexes()
         seed_categories_if_empty()
+        seed_ml_options_if_empty()
 
     except Exception as e:
         print(f" Database initialization error: {e}")

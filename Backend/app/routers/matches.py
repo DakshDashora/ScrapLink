@@ -115,7 +115,6 @@ async def get_matches(
     if not events:
         raise HTTPException(status_code=404, detail="No matches found. Call /refresh first.")
 
-    # Format to match Daksh's response shape
     top_matches = []
     for e in events:
         listing = db.query(ScrapListing).filter(ScrapListing.id == e.listing_id).first()

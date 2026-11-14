@@ -9,6 +9,7 @@ from app.models.buyer_requirement import BuyerRequirement, RequirementStatus, Re
 from app.models.requirement_embedding import RequirementEmbedding
 from app.models.listing_embedding import ListingEmbedding
 from app.models.match_event import MatchEvent
+from app.models.ml_reference import MLMaterial,MLScrapType
 
 __all__ = [
     "User",
@@ -25,5 +26,7 @@ __all__ = [
     "RequirementUnit",   
     "RequirementEmbedding",
     "ListingEmbedding",
-    "MatchEvent"
+    "MatchEvent",
+    "MLScrapType",
+    "MLMaterial"
 ]
