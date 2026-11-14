@@ -117,11 +117,9 @@ async def startup_event():
     try:
         init_db()
         print("Database initialized with pgvector")
-
         Base.metadata.create_all(bind=engine)
         print("Database tables created/verified")
         create_vector_indexes()
-        
         seed_categories_if_empty()
 
     except Exception as e:
