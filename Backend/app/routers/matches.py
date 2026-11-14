@@ -144,7 +144,7 @@ async def get_matches(
     }
 
 
-@router.get("/alerts/new")
+@router.get("/match-alerts")
 async def get_match_alerts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
