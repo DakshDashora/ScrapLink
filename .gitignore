@@ -27,6 +27,7 @@ Thumbs.db
 
 # Project specific
 Backend/.venv/
+<<<<<<< Updated upstream
 Backend/__pycache__/
 
 
@@ -35,3 +36,6 @@ node_modules/
 data/
 __pycache__/
 tests/
+=======
+Backend/__pycache__/
+>>>>>>> Stashed changes

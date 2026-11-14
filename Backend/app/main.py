@@ -12,6 +12,8 @@ from app.models import (
 from app.routers.requirements import router as requirements_router
 from app.routers.prediction import router as prediction_router
 from app.routers.trust import router as trust_router
+from app.routers.matches import router as matches_router
+
 
 import uuid
 
@@ -42,6 +44,8 @@ app.include_router(categories_router)
 app.include_router(prediction_router)
 app.include_router(requirements_router)
 app.include_router(trust_router)
+app.include_router(matches_router)
+
 
 
 
@@ -117,11 +121,9 @@ async def startup_event():
     try:
         init_db()
         print("Database initialized with pgvector")
-
         Base.metadata.create_all(bind=engine)
         print("Database tables created/verified")
         create_vector_indexes()
-        
         seed_categories_if_empty()
 
     except Exception as e:
