@@ -35,11 +35,12 @@ const AlertBell = () => {
     <div className="alert-bell-wrap" ref={wrapRef}>
       <button
         className="alert-bell-btn"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen((prev) => !prev)}
         aria-label="Match alerts"
         type="button"
+        title="Notifications"
       >
-        🔔
+        <span className="bell-icon">🔔</span>
         {unreadCount > 0 && (
           <span className="alert-badge">
             {unreadCount > 9 ? '9+' : unreadCount}

@@ -33,6 +33,9 @@ import MatchAlerts from '../pages/buyer/MatchAlerts';
 
 import '../styles/global.css';
 import '../styles/listing.css';
+import '../styles/responsive_navigation.css';
+import '../styles/matchmaker.css';
+import '../styles/alerts_modern.css';
 
 function App() {
   const dispatch = useDispatch();
@@ -53,9 +56,15 @@ function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 
-      {/* Protected dashboard shell */}
+      {/* Protected dashboard shell - Covers ALL authenticated pages */}
       <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
         <Route path="dashboard" element={<Dashboard />} />
+
+        {/* Organization */}
+        <Route
+          path="organization/new"
+          element={<RoleRoute allow={['Seller', 'Buyer', 'Admin']}><CreateOrganization /></RoleRoute>}
+        />
 
         {/* Seller routes */}
         <Route
@@ -84,56 +93,27 @@ function App() {
           path="marketplace/:id"
           element={<RoleRoute allow={['Buyer', 'Admin']}><ListingDetails /></RoleRoute>}
         />
+        <Route
+          path="buyer/requirements"
+          element={<RoleRoute allow={['Buyer', 'Admin']}><MyRequirements /></RoleRoute>}
+        />
+        <Route
+          path="buyer/requirements/new"
+          element={<RoleRoute allow={['Buyer', 'Admin']}><CreateRequirement /></RoleRoute>}
+        />
+        <Route
+          path="buyer/requirements/:id"
+          element={<RoleRoute allow={['Buyer', 'Admin']}><RequirementDetails /></RoleRoute>}
+        />
+        <Route
+          path="buyer/requirements/:id/edit"
+          element={<RoleRoute allow={['Buyer', 'Admin']}><EditRequirement /></RoleRoute>}
+        />
+        <Route
+          path="buyer/match-alerts"
+          element={<RoleRoute allow={['Buyer', 'Admin']}><MatchAlerts /></RoleRoute>}
+        />
       </Route>
-      <Route
-        path="/organization/new"
-        element={
-          <RoleRoute allow={['Seller', 'Buyer', 'Admin']}>
-            <CreateOrganization />
-          </RoleRoute>
-        }
-      />
-
-      <Route
-        path="/buyer/requirements"
-        element={
-          <RoleRoute allow={['Buyer', 'Admin']}>
-            <MyRequirements />
-          </RoleRoute>
-        }
-      />
-      <Route
-        path="/buyer/requirements/new"
-        element={
-          <RoleRoute allow={['Buyer', 'Admin']}>
-            <CreateRequirement />
-          </RoleRoute>
-        }
-      />
-      <Route
-        path="/buyer/requirements/:id"
-        element={
-          <RoleRoute allow={['Buyer', 'Admin']}>
-            <RequirementDetails />
-          </RoleRoute>
-        }
-      />
-      <Route
-        path="/buyer/requirements/:id/edit"
-        element={
-          <RoleRoute allow={['Buyer', 'Admin']}>
-            <EditRequirement />
-          </RoleRoute>
-        }
-      />
-      <Route
-        path="/buyer/match-alerts"
-        element={
-          <RoleRoute allow={['Buyer', 'Admin']}>
-            <MatchAlerts />
-          </RoleRoute>
-        }
-      />
 
     </Routes>
 

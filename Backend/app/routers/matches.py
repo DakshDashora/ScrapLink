@@ -42,10 +42,11 @@ async def refresh_matches(
     # 4. Format the candidate listings for Daksh
     candidates = []
     for l in listings:
+        cat_name = l.category.name if getattr(l, 'category', None) else None
         candidates.append(CandidateListing(
             id=str(l.id),
             material_name=l.material_name,
-            category=str(l.category_id), 
+            category=cat_name or str(l.category_id), 
             grade=l.grade,
             description=l.description,
             quantity=float(l.quantity),
@@ -118,12 +119,13 @@ async def get_matches(
     # Format to match Daksh's response shape
     top_matches = []
     for e in events:
-        listing = db.query(ScrapListing).filter(ScrapListing.id == e.listing_id).first()
+        listing = db.query(ScrapListing).options(joinedload(ScrapListing.category)).filter(ScrapListing.id == e.listing_id).first()
         if listing:
+            cat_name = listing.category.name if listing.category else "Scrap"
             top_matches.append({
                 "listing_id": str(listing.id),
                 "material_name": listing.material_name,
-                "category": "Unknown", # You can join to get category name
+                "category": cat_name,
                 "grade": listing.grade,
                 "quantity": float(listing.quantity),
                 "unit": listing.unit.value,
@@ -174,6 +176,8 @@ async def get_match_alerts(
                 "requirement_id": str(e.requirement_id),
                 "listing_id": str(e.listing_id),
                 "listing_name": listing.material_name,
+                "material_name": listing.material_name,
+                "title": f"New match: {listing.material_name}",
                 "similarity_score": float(e.similarity_score),
                 "created_at": e.created_at.isoformat()
             })
