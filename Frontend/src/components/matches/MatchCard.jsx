@@ -1,54 +1,47 @@
 import { Link } from 'react-router-dom';
 import MatchScoreBadge from './MatchScoreBadge';
-import MatchReasonList from './MatchReasonList';
 
 const MatchCard = ({ match }) => {
-  // Backend may return the listing inline or under .listing
-  const listing = match.listing || match;
-  const similarity =
-    match.similarity_score ??
-    match.score ??
-    match.similarity ??
-    null;
-
-  const image =
-    listing.media?.[0]?.file_url ||
-    listing.primary_image_url ||
-    null;
-
-  const loc =
-    listing.location?.city ||
-    listing.location?.state ||
-    '';
+  // 'match' is a single object from the top_matches array
+  
+  // The API returns asking_price and quantity as numbers, but let's be safe
+  const price = match.asking_price ? `₹ ${Number(match.asking_price).toLocaleString()}` : 'Price on request';
+  const qty = match.quantity ? `${Number(match.quantity).toLocaleString()} ${match.unit}` : '';
+  const loc = match.location?.city || match.location?.state || 'Location N/A';
 
   return (
     <div className="match-card">
-      <div className="match-card-media">
-        {image ? (
-          <img src={image} alt={listing.material_name} />
-        ) : (
-          <div className="no-image-small">No image</div>
-        )}
-        <MatchScoreBadge score={similarity} label="Semantic match" />
-      </div>
-
       <div className="match-card-body">
-        <h4>{listing.material_name}</h4>
-        {listing.grade && <p className="muted">Grade: {listing.grade}</p>}
-        {listing.quantity && (
-          <p className="muted">
-            {Number(listing.quantity).toLocaleString()} {listing.unit}
-          </p>
-        )}
-        {listing.asking_price && (
-          <p className="price">₹ {Number(listing.asking_price).toLocaleString()}</p>
-        )}
-        {loc && <p className="location">📍 {loc}</p>}
+        <div className="match-card-header">
+          <h4>{match.material_name}</h4>
+          <MatchScoreBadge 
+            score={match.similarity_score} 
+            label={match.match_quality || 'Match'} 
+          />
+        </div>
 
-        <MatchReasonList reasons={match.explanation || match.reasons} />
+        <div className="match-details">
+          {match.category && <p className="muted"><strong>Category:</strong> {match.category}</p>}
+          {match.grade && <p className="muted"><strong>Grade:</strong> {match.grade}</p>}
+          {qty && <p className="muted"><strong>Qty:</strong> {qty}</p>}
+          <p className="price"><strong>Price:</strong> {price}</p>
+          <p className="location">📍 {loc}</p>
+        </div>
 
-        <Link to={`/marketplace/${listing.id}`} className="btn-secondary small-btn">
-          View Listing
+        <div className="constraint-badge">
+          {match.hard_constraints_passed ? (
+            <span className="text-green-600">✅ Constraints Met</span>
+          ) : (
+            <span className="text-orange-500">⚠️ Partial Match</span>
+          )}
+        </div>
+
+        <Link 
+          to={`/marketplace/${match.listing_id}`} 
+          className="btn-secondary small-btn"
+          style={{ marginTop: '1rem', display: 'inline-block' }}
+        >
+          View Listing →
         </Link>
       </div>
     </div>

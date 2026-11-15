@@ -18,7 +18,7 @@ const RequirementDetails = () => {
   const navigate = useNavigate();
 
   const { current, isLoading, error } = useSelector((s) => s.requirements);
-  const matches = useSelector((s) => s.matches.byRequirement[id] || []);
+  const matchData = useSelector((s) => s.matches.byRequirement[id]);
   const { isLoading: matchLoading, isRefreshing, error: matchError } =
     useSelector((s) => s.matches);
 
@@ -48,10 +48,7 @@ const RequirementDetails = () => {
         <div className="owner-actions">
           {isActive && (
             <>
-              <Link
-                to={`/buyer/requirements/${id}/edit`}
-                className="btn-secondary"
-              >
+              <Link to={`/buyer/requirements/${id}/edit`} className="btn-secondary">
                 Edit
               </Link>
               <button className="btn-danger" onClick={handleDeactivate}>
@@ -64,60 +61,43 @@ const RequirementDetails = () => {
 
       <div className="requirement-summary">
         <div className="summary-left">
-          <p>
-            <strong>Quantity:</strong>{' '}
-            {Number(current.quantity).toLocaleString()} {current.unit}
-          </p>
-          {current.grade && (
-            <p><strong>Grade:</strong> {current.grade}</p>
-          )}
-          <p>
-            <strong>Target Price:</strong>{' '}
-            {current.target_price
-              ? `₹ ${Number(current.target_price).toLocaleString()}`
-              : 'Flexible'}
-          </p>
-          <p>
-            <strong>Location:</strong>{' '}
-            {current.location?.city || '—'}
-            {current.location?.state && `, ${current.location.state}`}
-          </p>
-          <p>
-            <strong>Status:</strong> {current.status}
-          </p>
-          {current.description && (
-            <p className="description">{current.description}</p>
-          )}
+          <p><strong>Quantity:</strong> {Number(current.quantity).toLocaleString()} {current.unit}</p>
+          {current.grade && <p><strong>Grade:</strong> {current.grade}</p>}
+          <p><strong>Target Price:</strong> {current.target_price ? `₹ ${Number(current.target_price).toLocaleString()}` : 'Flexible'}</p>
+          <p><strong>Location:</strong> {current.location?.city || '—'}</p>
+          <p><strong>Status:</strong> {current.status}</p>
         </div>
-
         <div className="summary-right">
-          <button
-            className="btn-primary"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
-            {isRefreshing ? 'Searching…' : '🔄 Find Fresh Matches'}
+          <button className="btn-primary" onClick={handleRefresh} disabled={isRefreshing}>
+            {isRefreshing ? 'Searching Marketplace…' : '🔄 Find Fresh Matches'}
           </button>
         </div>
       </div>
 
       <h3 className="section-heading">
-        Matched Listings ({matches.length})
+        Matched Listings ({matchData?.matches_found || 0})
       </h3>
+
+      {/* Display AI Disclaimer from API */}
+      {matchData?.disclaimer && (
+        <div className="ai-disclaimer">
+          ⓘ {matchData.disclaimer} (Evaluated {matchData.total_candidates_evaluated} listings)
+        </div>
+      )}
 
       {matchError && <div className="error-message">{matchError}</div>}
 
-      {matchLoading && matches.length === 0 ? (
-        <div className="loading">Finding matches…</div>
-      ) : matches.length === 0 ? (
+      {matchLoading && !matchData ? (
+        <div className="loading">Loading matches…</div>
+      ) : !matchData || !matchData.top_matches || matchData.top_matches.length === 0 ? (
         <div className="empty-state">
-          No matching listings yet. Try clicking <strong>Find Fresh Matches</strong>{' '}
-          once new listings appear.
+          No matching listings found. Try clicking <strong>Find Fresh Matches</strong>.
         </div>
       ) : (
         <div className="matches-grid">
-          {matches.map((m) => (
-            <MatchCard key={m.id || m.listing?.id} match={m} />
+          {/* Iterate over top_matches specifically */}
+          {matchData.top_matches.map((m) => (
+            <MatchCard key={m.listing_id} match={m} />
           ))}
         </div>
       )}
