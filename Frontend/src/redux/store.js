@@ -8,6 +8,7 @@ import requirementReducer from '../redux/slices/requirementSlice';
 import matchReducer from '../redux/slices/matchSlice';
 import alertReducer from '../redux/slices/alertSlice';
 import trustReducer from '../redux/slices/trustSlice';
+import mlOptionReducer from '../redux/slices/mlOptionSlice';
 
 export const store = configureStore({
   reducer: {
@@ -19,5 +20,6 @@ export const store = configureStore({
     matches: matchReducer,
     alerts: alertReducer,
     trust: trustReducer,
+    mlOptions: mlOptionReducer,
   },
 }); 
