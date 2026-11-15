@@ -68,7 +68,10 @@ export const getCurrentUser = createAsyncThunk(
       const { data } = await axiosInstance.get('/auth/me');
       return data;
     } catch (err) {
-      return rejectWithValue(err.response?.data || err.message);
+      return rejectWithValue({
+        status: err.response?.status,
+        detail: err.response?.data?.detail || err.message
+      });
     }
   }
 );
@@ -144,6 +147,10 @@ export const confirmPasswordReset = createAsyncThunk(
 const initialState = {
   user: null,
   token: localStorage.getItem('accessToken') || null,
+  
+  // Starts as TRUE if a token exists in localStorage. 
+  // This prevents the router from redirecting to /login before /auth/me finishes.
+  isAuthChecking: !!localStorage.getItem('accessToken'), 
 
   // signup flow
   pendingUser: null,
@@ -165,6 +172,7 @@ const authSlice = createSlice({
     logout: (state) => {
       state.user = null;
       state.token = null;
+      state.isAuthChecking = false;
       state.pendingUser = null;
       state.emailVerified = false;
       state.phoneVerified = false;
@@ -206,9 +214,11 @@ const authSlice = createSlice({
       .addCase(loginUser.pending, (state) => {
         state.isLoading = true;
         state.error = null;
+        state.isAuthChecking = true;
       })
       .addCase(loginUser.fulfilled, (state, action) => {
         state.isLoading = false;
+        state.isAuthChecking = false;
         state.token = action.payload.access_token;
         localStorage.setItem('accessToken', action.payload.access_token);
 
@@ -219,24 +229,32 @@ const authSlice = createSlice({
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.isLoading = false;
+        state.isAuthChecking = false;
         state.error = extractError(action.payload, 'Login failed');
       })
 
       // ---------- GET ME ----------
       .addCase(getCurrentUser.pending, (state) => {
         state.isLoading = true;
+        state.isAuthChecking = true;
       })
       .addCase(getCurrentUser.fulfilled, (state, action) => {
         state.isLoading = false;
-        // Normalize regardless of endpoint shape (id vs user_id, name vs full_name)
+        state.isAuthChecking = false;
         state.user = normalizeUser(action.payload);
       })
       .addCase(getCurrentUser.rejected, (state, action) => {
         state.isLoading = false;
-        state.error = extractError(action.payload, 'Failed to fetch user');
-        state.token = null;
-        state.user = null;
-        localStorage.removeItem('accessToken');
+        state.isAuthChecking = false;
+        state.error = action.payload?.detail || 'Failed to fetch user';
+        
+        // ONLY clear the session if the server explicitly rejected the token (401)
+        // If it's a 500 error or network timeout, keep the token!
+        if (action.payload?.status === 401) {
+          state.token = null;
+          state.user = null;
+          localStorage.removeItem('accessToken');
+        }
       })
 
       // ---------- VERIFICATION STATUS ----------

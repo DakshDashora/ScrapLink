@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const API_BASE_URL =
   (typeof process !== 'undefined' && process.env.REACT_APP_API_URL) ||
-  'https://scraplink-yz18.onrender.com';
+  'https://scraplink-yz18.onrender.com'; // Or your Render URL
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -26,11 +26,11 @@ axiosInstance.interceptors.request.use(
 axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Only clear the token on actual 401 Unauthorized
     if (error.response?.status === 401) {
       localStorage.removeItem('accessToken');
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
-      }
+      // REMOVED hard redirect: window.location.href = '/login';
+      // Redux/RoleRoute will handle the redirect naturally.
     }
     return Promise.reject(error);
   }
