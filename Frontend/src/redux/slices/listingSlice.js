@@ -192,7 +192,7 @@ const listingSlice = createSlice({
     resetFilters: (s) => { s.filters = initialState.filters; s.page = 1; },
     setPage: (s, a) => { s.page = a.payload; },
     clearCurrent: (s) => { s.current = null; },
-    clearPrediction: (s) => { s.prediction = null; },
+    clearPrediction: (s) => { s.pricePrediction = null; },
     clearListingError: (s) => { s.error = null; },
   },
   extraReducers: (builder) => {
