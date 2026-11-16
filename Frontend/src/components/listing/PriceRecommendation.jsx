@@ -3,36 +3,44 @@ import { predictPrice, clearPrediction } from '../../redux/slices/listingSlice';
 
 const PriceRecommendation = ({ listing }) => {
   const dispatch = useDispatch();
-  const { prediction, isLoading, error } = useSelector((s) => s.listings);
+  const { pricePrediction, isPredicting, predictError } = useSelector(
+    (s) => s.listings
+  );
 
   const handlePredict = () => {
-    // ✅ Send EXACTLY what the backend expects
-    dispatch(predictPrice({
-      commodity: listing.material_name,      // e.g., "Copper"
-      scrap_type: listing.grade || "", // e.g., "99.9%"
-    }));
+    const commodity = listing.material_name?.trim();
+    if (!commodity) return;
+
+    const payload = {
+      commodity,
+    };
+    if (listing.grade?.trim()) payload.scrap_type = listing.grade.trim();
+    dispatch(predictPrice(payload));
   };
 
   return (
     <div className="price-recommendation">
-      <button className="btn-primary" onClick={handlePredict} disabled={isLoading}>
-        {isLoading ? 'Calculating…' : 'Get Price Recommendation'}
+      <button
+        className="btn-primary"
+        onClick={handlePredict}
+        disabled={isPredicting || !listing.material_name?.trim()}
+      >
+        {isPredicting ? 'Calculating…' : 'Get Price Recommendation'}
       </button>
 
-      {error && <div className="error-message">{error}</div>}
+      {predictError && <div className="error-message">{predictError}</div>}
 
-      {prediction && (
+      {pricePrediction && (
         <div className="prediction-box">
           <h4>Estimated Recommended Price</h4>
           <p className="recommended-value">
-            ₹ {Number(prediction.recommended_price ?? prediction.price).toLocaleString()}
-            {prediction.unit ? ` / ${prediction.unit}` : ''}
+            ₹ {Number(pricePrediction.recommended_price).toLocaleString()}
+            {pricePrediction.unit ? ` / ${pricePrediction.unit}` : ''}
           </p>
           
-          {/* ✅ Fixed the price band rendering (it's an object, not an array) */}
-          {prediction.price_band && (
+          {pricePrediction.price_band && (
             <p className="price-band">
-              Range: ₹ {prediction.price_band.lower} – ₹ {prediction.price_band.upper}
+              Range: ₹ {pricePrediction.price_band.lower} – ₹ {pricePrediction.price_band.upper}
             </p>
           )}
 
