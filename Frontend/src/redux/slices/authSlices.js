@@ -144,6 +144,7 @@ export const confirmPasswordReset = createAsyncThunk(
 const initialState = {
   user: null,
   token: localStorage.getItem('accessToken') || null,
+  isInitialized: !localStorage.getItem('accessToken'),
 
   // signup flow
   pendingUser: null,
@@ -165,6 +166,7 @@ const authSlice = createSlice({
     logout: (state) => {
       state.user = null;
       state.token = null;
+      state.isInitialized = true;
       state.pendingUser = null;
       state.emailVerified = false;
       state.phoneVerified = false;
@@ -228,15 +230,22 @@ const authSlice = createSlice({
       })
       .addCase(getCurrentUser.fulfilled, (state, action) => {
         state.isLoading = false;
+        state.isInitialized = true;
         // Normalize regardless of endpoint shape (id vs user_id, name vs full_name)
         state.user = normalizeUser(action.payload);
       })
       .addCase(getCurrentUser.rejected, (state, action) => {
         state.isLoading = false;
+        state.isInitialized = true;
         state.error = extractError(action.payload, 'Failed to fetch user');
-        state.token = null;
-        state.user = null;
-        localStorage.removeItem('accessToken');
+        // Only clear token if rejection was an explicit auth failure (401)
+        const payload = action.payload;
+        const isAuthError = payload?.status === 401 || (typeof payload === 'string' && payload.includes('401'));
+        if (isAuthError) {
+          state.token = null;
+          state.user = null;
+          localStorage.removeItem('accessToken');
+        }
       })
 
       // ---------- VERIFICATION STATUS ----------

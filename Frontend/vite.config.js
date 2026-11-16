@@ -1,7 +1,16 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+// vite.config.js
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-})
+  server: {
+    proxy: {
+      '/api': {
+        target: 'https://scraplink-yz18.onrender.com',
+        changeOrigin: true,
+        secure: false, // Set to true if you encounter SSL issues
+      },
+    },
+  },
+});

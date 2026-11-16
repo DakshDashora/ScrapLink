@@ -38,4 +38,13 @@ __pycache__/
 tests/
 =======
 Backend/__pycache__/
->>>>>>> Stashed changes
+Backend/ml_pipeline/contract.md
+Backend/ml_pipeline/trust/artifacts/isolation_forest_v1.joblib
+Backend/ml_pipeline/training/train_model_kaggle.ipynb
+Backend/ml_pipeline/matching/how-to-use.md
+Backend/ml_pipeline/matching/contract.md
+Backend/ml_pipeline/how-to-predict-price.md
+Backend/ml_pipeline/how-to-predict-price - Copy.md
+Backend/ML_PIPELINE_INTEGRATION_GUIDE.md
+
+dist/
