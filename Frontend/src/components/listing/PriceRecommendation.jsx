@@ -6,13 +6,10 @@ const PriceRecommendation = ({ listing }) => {
   const { prediction, isLoading, error } = useSelector((s) => s.listings);
 
   const handlePredict = () => {
+    // ✅ Send EXACTLY what the backend expects
     dispatch(predictPrice({
-      category_id: listing.category_id,
-      material_name: listing.material_name,
-      grade: listing.grade,
-      quantity: Number(listing.quantity),
-      unit: listing.unit,
-      location: listing.location,
+      commodity: listing.category_name,      // e.g., "Copper"
+      scrap_type: listing.grade || listing.material_name, // e.g., "99.9%"
     }));
   };
 
@@ -31,11 +28,14 @@ const PriceRecommendation = ({ listing }) => {
             ₹ {Number(prediction.recommended_price ?? prediction.price).toLocaleString()}
             {prediction.unit ? ` / ${prediction.unit}` : ''}
           </p>
+          
+          {/* ✅ Fixed the price band rendering (it's an object, not an array) */}
           {prediction.price_band && (
             <p className="price-band">
-              Range: ₹ {prediction.price_band[0]} – ₹ {prediction.price_band[1]}
+              Range: ₹ {prediction.price_band.lower} – ₹ {prediction.price_band.upper}
             </p>
           )}
+
           <p className="disclaimer">
             ⚠ AI-assisted estimate based on market reference data — not a
             guaranteed transaction price.
