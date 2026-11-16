@@ -9,7 +9,7 @@ const PriceRecommendation = ({ listing }) => {
     // ✅ Send EXACTLY what the backend expects
     dispatch(predictPrice({
       commodity: listing.category_name,      // e.g., "Copper"
-      scrap_type: listing.grade || listing.material_name, // e.g., "99.9%"
+      scrap_type: listing.material_name || "", // e.g., "99.9%"
     }));
   };
 
